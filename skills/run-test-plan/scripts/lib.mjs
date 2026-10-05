@@ -176,12 +176,14 @@ export function loadRun(runId) {
         ]),
     );
     const status = result && !result.__parseError ? result.status : progress?.state || 'pending';
+    const timing = caseTiming(base, result, progress, questions, files, evidenceDir);
     return {
       ...tc,
       status,
       result,
       progress,
       questions,
+      timing,
       files,
       annotations,
       review: review[tc.id] || null,
@@ -203,6 +205,73 @@ export const viewerConfig = () => ({
   targets: CONFIG.targets,
   variants: CONFIG.variants,
 });
+
+// Agents rarely fill startedAt/finishedAt, so the runner keeps its own clock: `mark running`
+// writes timing.json and the result file's mtime closes the case. Runs from before timing.json
+// get an estimate from the first progress mark, question or screenshot, flagged as such.
+// Time spent waiting on a human answer is split out, so slow humans don't read as slow agents.
+function caseTiming(base, result, progress, questions, files, evidenceDir) {
+  if (!result || result.__parseError) return null;
+  const resultFile = join(base, 'result.json');
+  const finished = Date.parse(result.finishedAt || '') || statSync(resultFile).mtimeMs;
+  let started = Date.parse(result.startedAt || readJson(join(base, 'timing.json'), {})?.startedAt || '');
+  let estimated = false;
+  if (!started) {
+    const candidates = [
+      progress?.at,
+      ...questions.map((q) => q.askedAt),
+      ...files.map((f) => statSync(join(evidenceDir, f)).mtimeMs),
+    ]
+      .map((t) => (typeof t === 'number' ? t : Date.parse(t || '')))
+      .filter((t) => t && t < finished);
+    if (!candidates.length) return null;
+    started = Math.min(...candidates);
+    estimated = true;
+  }
+  const waitMs = questions.reduce((sum, q) => {
+    const asked = Date.parse(q.askedAt);
+    const answered = Math.min(Date.parse(q.answeredAt || '') || finished, finished);
+    return sum + Math.max(0, answered - asked);
+  }, 0);
+  const durationMs = Math.max(0, finished - started);
+  return {
+    startedAt: new Date(started).toISOString(),
+    finishedAt: new Date(finished).toISOString(),
+    durationMs,
+    waitMs,
+    agentMs: Math.max(0, durationMs - waitMs),
+    estimated,
+  };
+}
+
+// Everything the dashboard aggregates, one compact row per case, so filtering by date range or
+// plan happens in the browser without another round trip.
+export function dashboardData() {
+  return listRuns()
+    .map(({ id }) => loadRun(id))
+    .map((run) => ({
+      id: run.id,
+      planId: run.plan.id,
+      title: run.plan.title,
+      label: run.meta.label || null,
+      createdAt: run.meta.createdAt,
+      retestOf: run.meta.retestOf || null,
+      cases: run.testCases.map((tc) => ({
+        id: tc.id,
+        title: tc.title,
+        group: tc.group || null,
+        status: tc.status,
+        variants: tc.variants || {},
+        agentMs: tc.timing?.agentMs ?? null,
+        waitMs: tc.timing?.waitMs ?? null,
+        estimated: tc.timing?.estimated ?? null,
+        review: tc.review?.verdict || null,
+        warnings: tc.warnings.length,
+        questions: (tc.questions || []).length,
+        defects: (tc.result?.defects || []).length,
+      })),
+    }));
+}
 
 export function countStatuses(run) {
   const counts = { total: 0, pass: 0, fail: 0, blocked: 0, skipped: 0, running: 0, pending: 0 };

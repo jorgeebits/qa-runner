@@ -17,6 +17,8 @@ import {
   REVIEW_VERDICTS,
   SKILL_DIR,
   countStatuses,
+  dashboardData,
+  viewerConfig,
   listRuns,
   loadRun,
   readJson,
@@ -127,6 +129,18 @@ const route = async (req, res) => {
       return exportPng(req, res, runId, parts[4], parts[5]);
     if (resource === 'chat') return chat(req, res, runId, tcId, action);
     if (resource === 'memory') return memory(req, res, runId, tcId);
+    if (resource === 'dashboard' && req.method === 'GET') {
+      const memories = loadMemories({ all: true });
+      return send(res, 200, {
+        runs: dashboardData(),
+        config: viewerConfig(),
+        memory: {
+          active: memories.filter((m) => m.status === 'active').length,
+          proposed: memories.filter((m) => m.status === 'proposed').length,
+          reused: memories.reduce((sum, m) => sum + (m.stats?.used || 0), 0),
+        },
+      });
+    }
     if (resource === 'runs' && tcId === 'answer' && req.method === 'POST')
       return answer(req, res, runId, parts[4], parts[5]);
     if (resource === 'runs' && !runId) return send(res, 200, listRuns());

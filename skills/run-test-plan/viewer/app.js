@@ -1,5 +1,6 @@
 import { annotatedUrl, openEditor } from './annotate.js';
 import { createChat } from './chat.js';
+import { createDashboard } from './dashboard.js';
 
 const STATUSES = ['pass', 'fail', 'blocked', 'skipped', 'running', 'pending'];
 const REVIEWS = [
@@ -18,6 +19,7 @@ const VIDEO = /\.(mp4|webm)$/i;
 const TEXT = /\.(json|txt|log|md|yml|har)$/i;
 
 const state = {
+  view: 'dashboard',
   runs: [],
   run: null,
   runId: null,
@@ -84,14 +86,16 @@ function parseHash() {
 }
 
 function setHash() {
+  if (state.view !== 'run') return;
   const next = `#/run/${encodeURIComponent(state.runId)}${state.tcId ? `/tc/${encodeURIComponent(state.tcId)}` : ''}`;
   if (location.hash !== next) history.replaceState(null, '', next);
 }
 
 async function loadRuns() {
   state.runs = await api('/api/runs');
-  $('#run-select').innerHTML = state.runs.length
-    ? state.runs
+  $('#run-select').innerHTML =
+    '<option value="">Dashboard</option>' +
+    state.runs
         .map((r) => {
           const c = r.counts || {};
           const parts = [
@@ -102,12 +106,34 @@ async function loadRuns() {
           ];
           return `<option value="${esc(r.id)}">${esc(`${r.id}${r.label ? ` · ${r.label}` : ''} — ${parts.filter(Boolean).join(', ')}`)}</option>`;
         })
-        .join('')
-    : '<option>No runs yet</option>';
+        .join('');
+}
+
+function showDashboard() {
+  state.view = 'dashboard';
+  clearTimeout(state.timer);
+  chat.close?.();
+  document.body.dataset.view = 'dashboard';
+  $('#run-select').value = '';
+  $('#live').hidden = true;
+  if (location.hash && location.hash !== '#/') history.replaceState(null, '', '#/');
+  renderMemoryBadge();
+  return dashboard.load().catch(showError);
+}
+
+function showRun(runId, tcId = null) {
+  dashboard.hide();
+  state.view = 'run';
+  document.body.dataset.view = 'run';
+  if (runId !== state.runId) state.drafts.clear();
+  state.runId = runId;
+  state.tcId = tcId;
+  $('#run-select').value = runId;
+  return loadRun({ force: true }).catch(showError);
 }
 
 async function loadRun({ force = false } = {}) {
-  if (!state.runId) return;
+  if (!state.runId || state.view !== 'run') return;
   const run = await api(`/api/runs/${encodeURIComponent(state.runId)}`);
   const payload = JSON.stringify(run);
   if (!force && payload === state.lastPayload) return scheduleNext();
@@ -862,8 +888,11 @@ document.addEventListener('click', async (event) => {
   else if (target.dataset.zoom) openLightbox(target.dataset.zoom);
   else if (target.id === 'refresh') {
     await loadRuns();
-    $('#run-select').value = state.runId;
-    await loadRun({ force: true });
+    if (state.view === 'dashboard') await showDashboard();
+    else {
+      $('#run-select').value = state.runId;
+      await loadRun({ force: true });
+    }
     toast('Refreshed');
   } else if (target.id === 'theme') applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
   else if (target.id === 'shortcuts') $('#help').showModal();
@@ -926,6 +955,8 @@ document.addEventListener('keydown', (event) => {
     return;
   }
   if (event.ctrlKey || event.metaKey || event.altKey || $('#help').open || $('#memory-panel').open) return;
+  if (event.key === 'g') return void (location.hash = '#/');
+  if (state.view !== 'run' && !['m', '?', '/'].includes(event.key)) return;
   const actions = {
     j: () => moveCase(1),
     k: () => moveCase(-1),
@@ -953,20 +984,22 @@ window.addEventListener('beforeunload', (event) => {
 });
 
 $('#run-select').addEventListener('change', (event) => {
-  state.runId = event.target.value;
-  state.tcId = null;
-  state.drafts.clear();
-  loadRun({ force: true }).catch(showError);
+  location.hash = event.target.value ? `#/run/${encodeURIComponent(event.target.value)}` : '#/';
 });
 
 window.addEventListener('hashchange', () => {
   const { runId, tcId } = parseHash();
-  if (runId && (runId !== state.runId || tcId !== state.tcId)) {
-    state.runId = runId;
-    state.tcId = tcId;
-    $('#run-select').value = runId;
-    loadRun({ force: true }).catch(showError);
-  }
+  if (!runId) {
+    if (state.view !== 'dashboard') showDashboard();
+  } else if (state.view !== 'run' || runId !== state.runId || tcId !== state.tcId) showRun(runId, tcId);
+});
+
+const dashboard = createDashboard({
+  host: $('#dashboard'),
+  api,
+  icon,
+  onOpenRun: (runId) => (location.hash = `#/run/${encodeURIComponent(runId)}`),
+  onOpenCase: (runId, tcId) => (location.hash = `#/run/${encodeURIComponent(runId)}/tc/${encodeURIComponent(tcId)}`),
 });
 
 const chat = createChat({
@@ -982,15 +1015,8 @@ const chat = createChat({
   try {
     await loadRuns();
     const { runId, tcId } = parseHash();
-    state.runId = runId && state.runs.some((r) => r.id === runId) ? runId : state.runs[0]?.id || null;
-    state.tcId = tcId;
-    if (!state.runId) {
-      $('#detail').innerHTML =
-        '<p class="empty">No runs yet. Create one with <code>qa-runs.mjs init &lt;plan.json&gt;</code>.</p>';
-      return;
-    }
-    $('#run-select').value = state.runId;
-    await loadRun({ force: true });
+    if (runId && state.runs.some((r) => r.id === runId)) await showRun(runId, tcId);
+    else await showDashboard();
   } catch (error) {
     showError(error);
   }

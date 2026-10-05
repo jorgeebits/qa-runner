@@ -131,12 +131,12 @@
     </svg>
 
     <header class="topbar">
-      <div class="brand">
+      <a class="brand" href="#/" title="Dashboard (g)">
         <span class="brand-mark" aria-hidden="true">
           <svg class="icon"><use href="#i-pass" /></svg>
         </span>
         <span class="brand-name">QA Test Runs</span>
-      </div>
+      </a>
       <label class="run-picker">
         <span class="sr-only">Run</span>
         <select id="run-select"></select>
@@ -167,6 +167,8 @@
         </button>
       </div>
     </header>
+
+    <section id="dashboard" class="dashboard" aria-label="Dashboard"></section>
 
     <section id="run-header" class="run-header" aria-label="Run summary"></section>
 
@@ -221,6 +223,8 @@
         <dd>Save review and go to the next unreviewed case</dd>
         <dt><kbd>t</kbd></dt>
         <dd>Chat with your agent</dd>
+        <dt><kbd>g</kbd></dt>
+        <dd>Go to the dashboard</dd>
         <dt><kbd>m</kbd></dt>
         <dd>Memory: review what agents learned</dd>
         <dt><kbd>/</kbd></dt>

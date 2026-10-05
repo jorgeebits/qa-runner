@@ -12,6 +12,28 @@
   version 1 files are mapped on load.
 - **Packaging.** Claude Code plugin with its own marketplace manifest.
 
+## Done (0.3.0): dashboard
+
+- The viewer's home is a dashboard. KPI tiles show pass rate, failures, blocked cases, average
+  agent time per case, reviewer agreement and questions to the human, each with a delta against
+  the previous period. Charts show outcomes by run, agent time per run and outcomes by variant.
+  Two tables list the cases that need attention (failing, blocked or flaky) and the slowest cases,
+  followed by the recent runs.
+- The runner keeps its own clock: `mark running` writes `timing.json` and the result file
+  closes the case. Older runs are estimated and flagged. Waiting on a human is excluded from
+  agent time.
+- Chart fills use the status palette, stacked pass → blocked → fail so green never touches red
+  (validated for color-vision deficiency). Identity always also rides on icons, labels and a
+  table view.
+
+Candidate metrics that need data the runner does not record yet:
+
+- **Cost per run.** Tokens and dollars per agent group. The orchestrator gets this in each
+  agent's completion notice; a `usage` command could store it.
+- **First-pass yield.** The share of cases that pass without a retest, which needs retest
+  chains followed across runs.
+- **Defect yield.** Real bugs filed per run, which needs the filed issue keys.
+
 ## Done (0.2.0): Phase 3, memory
 
 Implemented as designed below (`scripts/memory.mjs`, `scripts/questions.mjs`,

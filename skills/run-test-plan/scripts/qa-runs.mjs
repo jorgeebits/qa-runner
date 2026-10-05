@@ -19,7 +19,7 @@
 //   questions [runId]         Open questions, for answering from the terminal.
 //   memory <list|show|recall|add|used|approve|stale|reject|prune> …   (memory --help)
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { imageSize, readAnnotations, removeAnnotations, writeAnnotations } from './annotations.mjs';
 import {
@@ -517,7 +517,7 @@ async function open() {
     for (let i = 0; i < 40 && !(await health()); i += 1) await new Promise((r) => setTimeout(r, 250));
     if (!(await health())) fail(`viewer server did not start on port ${PORT}.`);
   }
-  const runId = args[0] || listRuns()[0]?.id;
+  const runId = args[0];
   const url = `http://127.0.0.1:${PORT}/${runId ? `#/run/${encodeURIComponent(runId)}` : ''}`;
   if (!flags['no-browser']) {
     const opener =
@@ -541,7 +541,11 @@ function mark() {
     fail('usage: mark <runId> <tcId> <running|pending> [note]');
   const base = tcDir(runId, tcId);
   if (!existsSync(base)) fail(`unknown test case ${tcId} in run ${runId}`);
-  writeJson(join(base, 'progress.json'), { state, note: note.join(' ') || null, at: new Date().toISOString() });
+  const at = new Date().toISOString();
+  writeJson(join(base, 'progress.json'), { state, note: note.join(' ') || null, at });
+  const timing = join(base, 'timing.json');
+  if (state === 'running' && !existsSync(timing)) writeJson(timing, { startedAt: at });
+  if (state === 'pending' && existsSync(timing)) rmSync(timing);
   console.log(`OK ${tcId} ${state}`);
 }
 

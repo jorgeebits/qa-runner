@@ -2,7 +2,8 @@
 
 ## Review (human in the loop)
 
-Tell the human the run is ready in the viewer and give the counts. They mark each case
+Tell the human the run is ready in the viewer and give the counts. The viewer opens on the
+dashboard (trends across runs); `$Q open <runId>` jumps straight to the run. They mark each case
 **Approve / Needs retest / Reject** with a comment, which lands in `review.json`. Shortcuts:
 `j`/`k` move between cases, `a`/`n`/`r` pick a verdict, `c` focuses the comment, `Ctrl+Enter`
 saves and jumps to the next unreviewed case, `?` lists them all.

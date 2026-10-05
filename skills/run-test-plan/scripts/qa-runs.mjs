@@ -20,10 +20,11 @@
 //   memory <list|show|recall|add|used|approve|stale|reject|prune> …   (memory --help)
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { imageSize, readAnnotations, removeAnnotations, writeAnnotations } from './annotations.mjs';
 import {
   BRIEF_LIMIT,
+  KINDS,
   addMemory,
   caseQuery,
   findMemory,
@@ -54,7 +55,9 @@ import {
   writeJson,
 } from './lib.mjs';
 
-const [command, ...rest] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+if (argv[0] === '--project') argv.splice(0, 2);
+const [command, ...rest] = argv;
 const flags = {};
 const args = [];
 for (let i = 0; i < rest.length; i += 1) {
@@ -203,7 +206,7 @@ function groupIds(testCases) {
 function brief(plan, tc, runId, record, { memories = [], carried = [] } = {}) {
   const base = tcDir(runId, tc.id);
   const evidence = repoPath(join(base, 'evidence'));
-  const cli = repoPath(join(SKILL_DIR, 'scripts', 'qa-runs.mjs'));
+  const cli = `${repoPath(join(SKILL_DIR, 'scripts', 'qa-runs.mjs'))} --project "${PROJECT_ROOT.split(sep).join('/')}"`;
   const env = { ...(plan.environment || {}), ...(tc.environment || {}) };
   const targets = { ...(plan.environment?.targets || {}), ...(tc.environment?.targets || {}) };
   const referenceCheck = tc.referenceCheck || plan.defaults?.referenceCheck || 'on-deviation';
@@ -279,14 +282,14 @@ function brief(plan, tc, runId, record, { memories = [], carried = [] } = {}) {
     '## Protocol',
     `1. Start: \`node ${cli} mark ${runId} ${tc.id} running\``,
     `2. Evidence goes in \`${evidence}/\`, named \`NN-<step-slug>.<ext>\`. Save request/response bodies you rely on as \`.json\`. Screenshots, either way:`,
-    `   - **Annotated (preferred for the proof of each expected result, and for every fail/blocked):** open \`${repoPath(join(base, '.capture.js'))}\`, set \`file\` and \`marks\` (CSS or \`text=…\` selectors; types rect, ellipse, highlight, arrow, text, step, spotlight, blur; optional \`label\`, \`color\`), and run it with \`browser_run_code_unsafe\` (paste it as \`code\`, or save your edit and pass \`filename\`). It takes the screenshot and draws the marks on the element boxes. Keep marks few and meaningful: one arrow or box per point you prove. Blur any personal data.`,
+    `   - **Annotated (preferred for the proof of each expected result, and for every fail/blocked):** open \`${repoPath(join(base, '.capture.js'))}\`, set \`file\` and \`marks\` (CSS or \`text=…\` selectors; types rect, ellipse, highlight, arrow, text, step, spotlight, blur; optional \`label\`, \`color\`), and run it with \`browser_run_code_unsafe\` (paste it as \`code\`, or save your edit and pass \`filename\`). It takes the screenshot and draws the marks on the element boxes. Keep marks few and meaningful: one arrow or box per point you prove.${CONFIG.evidence?.blurPersonalData ? ' Blur any personal data (names, IDs, phones, addresses): this project requires it.' : ' Do not blur: this is test data and reviewers need to read it.'}`,
     `   - **Plain:** \`browser_take_screenshot\` with \`scale: "css"\` and \`filename: "${evidence}/01-<slug>.png"\`.`,
     ...(record
       ? [
           `3. Recording is ON. Right before step 1 run \`browser_run_code_unsafe\` with \`filename: "${repoPath(join(base, '.rec', 'start.js'))}"\`; after the last step run it with \`filename: "${repoPath(join(base, '.rec', 'stop.js'))}"\`. The viewer server must be running (\`node ${cli} open\`). Stop prints the video file name; list it in \`evidence\` with kind \`video\`, and cite it in the \`evidence\` of every step that has no still of its own.`,
         ]
       : []),
-    `${record ? 4 : 3}. **Missing input** (a value the brief and memory above do not give): first \`node ${cli} memory recall "<what you need>" --run ${runId} --tc ${tc.id}\`. If nothing fits, ask the human: \`node ${cli} ask ${runId} ${tc.id} --field "<what you need>" --context "<where and why>" [--screenshot <file>]\`. It waits up to 5 minutes and prints \`ANSWER <value>\`; on \`TIMEOUT\`, finish the case as \`blocked\` with \`blockedReason: "needs-input"\`. Never guess a value.`,
+    `${record ? 4 : 3}. **Missing input** (a value the brief and memory above do not give): first \`node ${cli} memory recall "<what you need>" --run ${runId} --tc ${tc.id}\`. If nothing fits, ask the human: \`node ${cli} ask ${runId} ${tc.id} --field "<short name of the value, max 6 words>" --context "<where and why>" [--screenshot <file>]\`. A remembered answer is stored under the field, so name the value, not the situation. It waits up to 5 minutes and prints \`ANSWER <value>\`; on \`TIMEOUT\`, finish the case as \`blocked\` with \`blockedReason: "needs-input"\`. Never guess a value.`,
     `${record ? 5 : 4}. **Memory feedback.** After using a memory: \`node ${cli} memory used <id>\` (add \`--failed\` if it did not work). Put anything a future run in this situation would need in \`learnings\`; a human approves it before it is reused.`,
     `${record ? 6 : 5}. Write \`${repoPath(join(base, 'result.json'))}\` (contract: \`${repoPath(join(SKILL_DIR, 'schemas', 'test-result.schema.json'))}\`). Use this skeleton:`,
     '',
@@ -310,7 +313,7 @@ function brief(plan, tc, runId, record, { memories = [], carried = [] } = {}) {
         ...(targets.reference && {
           reference: { checked: false, result: 'same | deviation | improvement | n/a', notes: '' },
         }),
-        learnings: [],
+        learnings: [{ kind: 'data | procedure | env-quirk | gotcha', text: '', value: '', triggers: [] }],
         notes: '',
       },
       null,
@@ -570,13 +573,14 @@ function importLearnings(run) {
   );
   let added = 0;
   for (const tc of run.testCases) {
-    (tc.result?.learnings || []).forEach((learning, i) => {
-      if (known.has(`${tc.id}#${i}`) || !learning?.text) return;
+    (tc.result?.learnings || []).forEach((raw, i) => {
+      const learning = typeof raw === 'string' ? { kind: 'procedure', text: raw } : raw;
+      if (known.has(`${tc.id}#${i}`) || !learning?.text?.trim()) return;
       try {
         addMemory({
-          kind: learning.kind,
+          kind: KINDS.includes(learning.kind) ? learning.kind : 'procedure',
           text: learning.text,
-          value: learning.value,
+          value: learning.value || undefined,
           triggers: learning.triggers,
           status: 'proposed',
           scope: tc.variants && Object.keys(tc.variants).length ? { variants: tc.variants } : undefined,

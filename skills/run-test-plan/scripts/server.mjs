@@ -88,7 +88,6 @@ const readBody = (req) =>
   });
 
 function serveFile(req, res, file) {
-  if (file.split(/[\\/]/).some((part) => part.startsWith('.'))) return send(res, 404, { error: 'not found' });
   if (!existsSync(file) || !statSync(file).isFile()) return send(res, 404, { error: 'not found' });
   const { size } = statSync(file);
   const type = TYPES[extname(file).toLowerCase()] || 'application/octet-stream';
@@ -141,7 +140,12 @@ const route = async (req, res) => {
     return send(res, 404, { error: 'unknown endpoint' });
   }
 
-  if (parts[0] === 'runs') return serveFile(req, res, safeJoin(RUNS_DIR, ...parts.slice(1)));
+  // Dot-folders inside a run (.answers, .rec, .capture.js) are agent plumbing, never evidence.
+  // Only the URL segments are checked: the runs folder itself usually lives under .qa/.
+  if (parts[0] === 'runs') {
+    if (parts.slice(1).some((part) => part.startsWith('.'))) return send(res, 404, { error: 'not found' });
+    return serveFile(req, res, safeJoin(RUNS_DIR, ...parts.slice(1)));
+  }
   return serveFile(req, res, safeJoin(VIEWER_DIR, ...(parts.length ? parts : ['index.html'])));
 };
 

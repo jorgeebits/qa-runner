@@ -17,7 +17,8 @@ Rules:
 - Tool: {tool}. Load the browser tools you need in ONE ToolSearch call. For Playwright MCP:
   "select:mcp__playwright__browser_navigate,mcp__playwright__browser_snapshot,mcp__playwright__browser_click,mcp__playwright__browser_type,mcp__playwright__browser_fill_form,mcp__playwright__browser_select_option,mcp__playwright__browser_evaluate,mcp__playwright__browser_run_code_unsafe,mcp__playwright__browser_take_screenshot,mcp__playwright__browser_network_requests,mcp__playwright__browser_network_request,mcp__playwright__browser_console_messages,mcp__playwright__browser_wait_for,mcp__playwright__browser_press_key,mcp__playwright__browser_handle_dialog,mcp__playwright__browser_tabs"
 - For the screenshot that proves each expected result (and every fail/blocked), use the brief's
-  `.capture.js`: it saves the shot with arrows/boxes on the elements you name. Blur personal data.
+  `.capture.js`: it saves the shot with arrows/boxes on the elements you name. Blur only if the
+  brief asks for it.
 - Navigate with snapshots. Take screenshots only as evidence, straight into the brief's
   evidence folder (pass `filename`).
 - Status meanings: pass = the expected end state is proven; fail = the product behaves wrong;

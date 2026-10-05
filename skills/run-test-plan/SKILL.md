@@ -46,7 +46,8 @@ Only when needed: `references/memory.md` (what agents remember, live questions, 
 - Never write credentials into plans, briefs, results, evidence, or memory. `validate` scans
   for leaks; memory holds secrets only as `env:NAME` references.
 - Nothing an agent learns is reused until a human approves it.
-- Synthetic test data only; blur personal data in screenshots.
+- Synthetic test data only. Screenshots are blurred only when `.qa/config.json → evidence.blurPersonalData`
+  is true (environments that show real customer data); test environments leave it off.
 - Don't post to the issue tracker or transition a ticket without explicit confirmation.
 - Keep the viewer generic: run facts belong in plans and results, project facts in
   `.qa/config.json`. If a contract changes, bump `schemaVersion` and keep reading older runs.

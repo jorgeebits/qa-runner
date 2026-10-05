@@ -96,6 +96,16 @@
           "description": "Most memory pointers per brief."
         }
       }
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "blurPersonalData": {
+          "type": "boolean",
+          "default": false,
+          "description": "Ask Test Agents to blur names, IDs, phones and addresses in screenshots. Turn on only for environments that show real customer data."
+        }
+      }
     }
   }
 }

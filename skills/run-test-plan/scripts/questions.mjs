@@ -45,12 +45,14 @@ export function answerQuestion(runId, tcId, qid, { answer, sensitive = false, re
   let memory = null;
   if (remember) {
     const tc = loadRun(runId).testCases.find((t) => t.id === tcId);
+    // The context explains why the agent got stuck in that run; it is noise for a later run, so
+    // only the field becomes the memory, and only a short field is precise enough as a trigger.
     memory = addMemory(
       {
         kind: 'data',
-        text: question.context ? `${question.field}: ${question.context}` : question.field,
+        text: question.field,
         value,
-        triggers: [question.field],
+        triggers: question.field.length <= 60 ? [question.field] : [],
         scope: tc?.variants && Object.keys(tc.variants).length ? { variants: tc.variants } : undefined,
         source: { run: runId, tc: tcId, question: qid, confirmedBy: by },
       },

@@ -6,8 +6,20 @@ import { fileURLToPath } from 'node:url';
 
 export const SKILL_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // The plugin lives in Claude Code's plugin cache, so everything a run writes is anchored to the
-// project being tested (the session's working directory), never to where the plugin is installed.
-export const PROJECT_ROOT = resolve(process.env.QA_PROJECT_DIR || process.cwd());
+// project being tested, never to where the plugin is installed. Agents' shells wander (a `cd`
+// for a screenshot), so briefs pass --project explicitly; otherwise the nearest folder holding
+// .qa/ wins, then the working directory.
+export const PROJECT_ROOT = resolveProject();
+
+function resolveProject() {
+  const flag = process.argv.indexOf('--project');
+  if (flag > 1 && process.argv[flag + 1]) return resolve(process.argv[flag + 1]);
+  if (process.env.QA_PROJECT_DIR) return resolve(process.env.QA_PROJECT_DIR);
+  for (let dir = process.cwd(); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, '.qa'))) return dir;
+    if (dirname(dir) === dir) return process.cwd();
+  }
+}
 export const CONFIG_FILE = join(PROJECT_ROOT, '.qa', 'config.json');
 
 export const RESULT_STATUSES = ['pass', 'fail', 'blocked', 'skipped'];

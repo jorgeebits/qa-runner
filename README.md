@@ -29,16 +29,45 @@ plan.json ──init──▶ brief.md per case ──Test Agent (browser)──
 
 ## Requirements
 
-- Claude Code with the Playwright MCP server configured
+- [Claude Code](https://docs.claude.com/en/docs/claude-code)
 - Node.js 20+ (no npm dependencies)
+- The [Playwright MCP server](https://github.com/microsoft/playwright-mcp), registered as `playwright`
 - `ffmpeg` on the PATH, only for recordings
 
 ## Install
 
-```bash
-claude plugin marketplace add <path-or-git-url-of-this-repo>
-claude plugin install qa-runner@qa-runner
-```
+1. Add this repo as a plugin marketplace and install the plugin:
+
+   ```bash
+   claude plugin marketplace add jorgeebits/qa-runner
+   ```
+
+   ```bash
+   claude plugin install qa-runner@qa-runner
+   ```
+
+   Inside a Claude Code session the same steps are `/plugin marketplace add jorgeebits/qa-runner`
+   and `/plugin install qa-runner@qa-runner`. Restart Claude Code afterwards so the
+   `run-test-plan` skill loads.
+
+2. Register the Playwright MCP server. Test Agents call its tools as `mcp__playwright__*`, so
+   the server name must be `playwright`:
+
+   ```bash
+   claude mcp add playwright -- npx @playwright/mcp@latest
+   ```
+
+3. Optional, for recordings: install `ffmpeg` (`winget install Gyan.FFmpeg`,
+   `brew install ffmpeg` or `sudo apt install ffmpeg`) and make sure it is on the PATH.
+
+4. Check the install with `claude plugin list` and `claude mcp list`.
+
+To update, run `claude plugin marketplace update qa-runner` and then
+`claude plugin update qa-runner@qa-runner`. To remove it, run
+`claude plugin uninstall qa-runner@qa-runner`.
+
+To work on the plugin itself, clone the repo and add the local folder instead:
+`claude plugin marketplace add ./qa-runner`.
 
 ## Set up a project
 

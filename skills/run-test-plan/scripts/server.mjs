@@ -9,6 +9,8 @@ import { createServer } from 'node:http';
 import { basename, extname, join } from 'node:path';
 import { imageSize, readAnnotations, writeAnnotations } from './annotations.mjs';
 import { chatState, resetChat, sendChat, stopChat } from './chat.mjs';
+import { addMemory, findMemory, loadMemories, removeMemory, updateMemory } from './memory.mjs';
+import { answerQuestion } from './questions.mjs';
 import {
   PORT,
   RUNS_DIR,
@@ -86,6 +88,7 @@ const readBody = (req) =>
   });
 
 function serveFile(req, res, file) {
+  if (file.split(/[\\/]/).some((part) => part.startsWith('.'))) return send(res, 404, { error: 'not found' });
   if (!existsSync(file) || !statSync(file).isFile()) return send(res, 404, { error: 'not found' });
   const { size } = statSync(file);
   const type = TYPES[extname(file).toLowerCase()] || 'application/octet-stream';
@@ -124,6 +127,9 @@ const route = async (req, res) => {
     if (resource === 'runs' && tcId === 'export' && req.method === 'POST')
       return exportPng(req, res, runId, parts[4], parts[5]);
     if (resource === 'chat') return chat(req, res, runId, tcId, action);
+    if (resource === 'memory') return memory(req, res, runId, tcId);
+    if (resource === 'runs' && tcId === 'answer' && req.method === 'POST')
+      return answer(req, res, runId, parts[4], parts[5]);
     if (resource === 'runs' && !runId) return send(res, 200, listRuns());
     if (resource === 'runs' && req.method === 'GET') {
       if (!existsSync(runDir(runId))) return send(res, 404, { error: 'unknown run' });
@@ -138,6 +144,51 @@ const route = async (req, res) => {
   if (parts[0] === 'runs') return serveFile(req, res, safeJoin(RUNS_DIR, ...parts.slice(1)));
   return serveFile(req, res, safeJoin(VIEWER_DIR, ...(parts.length ? parts : ['index.html'])));
 };
+
+async function answer(req, res, runId, tcId, qid) {
+  if (!existsSync(join(runDir(runId), 'plan.json'))) return send(res, 404, { error: 'unknown run' });
+  const body = await readBody(req);
+  try {
+    const remember = ['project', 'user'].includes(body.remember) ? body.remember : null;
+    return send(
+      res,
+      200,
+      answerQuestion(runId, tcId, qid, { answer: body.answer, sensitive: Boolean(body.sensitive), remember }),
+    );
+  } catch (error) {
+    return send(res, 400, { error: error.message });
+  }
+}
+
+// The reviewer curates memory from the viewer: approve or reject what agents proposed, retire
+// what went stale, bring back what was retired by mistake.
+async function memory(req, res, id, action) {
+  if (req.method === 'GET') return send(res, 200, loadMemories({ all: true }).map(({ file, ...e }) => e));
+  if (req.method !== 'POST' || !id) return send(res, 405, { error: 'use GET, or POST /api/memory/<id>/<action>' });
+  const entry = findMemory(id);
+  if (!entry) return send(res, 404, { error: 'unknown memory' });
+  try {
+    if (action === 'approve' || action === 'activate') {
+      const { file, share, ...rest } = updateMemory(id, {
+        status: 'active',
+        stats: { ...entry.stats, failed: 0 },
+        source: { ...entry.source, confirmedBy: 'reviewer' },
+      });
+      return send(res, 200, rest);
+    }
+    if (action === 'stale') return send(res, 200, updateMemory(id, { status: 'stale' }).id);
+    if (action === 'reject' || action === 'delete') return send(res, 200, removeMemory(id).id);
+    if (action === 'move' && entry.share === 'user') {
+      const { id: _, file, share, stats, source, ...rest } = entry;
+      const moved = addMemory({ ...rest, source: { ...source, movedFrom: 'user' } }, 'project');
+      removeMemory(id);
+      return send(res, 200, moved.id);
+    }
+  } catch (error) {
+    return send(res, 400, { error: error.message });
+  }
+  return send(res, 400, { error: 'action must be approve, activate, stale, reject, delete or move' });
+}
 
 async function saveReview(req, res, runId, tcId) {
   const file = join(runDir(runId), 'review.json');

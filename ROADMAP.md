@@ -12,7 +12,21 @@
   version 1 files are mapped on load.
 - **Packaging.** Claude Code plugin with its own marketplace manifest.
 
-## Next: Phase 3, memory
+## Done (0.2.0): Phase 3, memory
+
+Implemented as designed below (`scripts/memory.mjs`, `scripts/questions.mjs`,
+`references/memory.md`), with these details settled during the build:
+
+- Header values are JSON, so the format needs no YAML dependency.
+- Sensitive answers reach the waiting agent once through a dot-file the server never serves,
+  are saved as `***`, and cannot be remembered.
+- A memory is refused when its description mentions a password, PIN, token or key, or when its
+  value looks like a card or account number.
+- The chat agent may list, recall and propose memories only (`QA_MEMORY_ROLE=chat`).
+- `init --retest` copies the previous run's answers into the new briefs.
+- Environment quirks scoped to a case's variants reach its brief even without shared words.
+
+### Design
 
 Goal: when a Test Agent needs a value it does not have and a human provides it, a future run in
 a similar situation can reuse it without asking again.

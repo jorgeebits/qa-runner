@@ -6,6 +6,11 @@
   steal each other's tabs. Launch the next group when the previous one notifies.
 - Each agent replies with one line per case. Don't read its transcript, the evidence, or the
   result files into this session; run `$Q status <runId>` instead.
+- If `init` printed `secret needed: env:NAME`, put that variable's value in the prompt next to
+  the password, labeled with the same `env:NAME`.
+- An agent may stop and wait on a question (`ask`). The human answers in the viewer. If an agent
+  comes back `blocked` with `needs-input`, run `$Q questions <runId>`, ask the human, record the
+  answer with `$Q answer …`, and retest.
 - If an agent dies mid-group, `$Q mark <runId> <tcId> pending` the unfinished cases and relaunch
   the group with only those briefs.
 - Project skills listed in `.qa/config.json → capabilities` (login, navigation, bug filing…)

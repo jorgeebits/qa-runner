@@ -31,6 +31,16 @@
       ],
       "description": "pass = expected end state proven; fail = product behaves wrong; blocked = environment/data prevented the test (no access, locked user, missing data); skipped = deliberately not run."
     },
+    "blockedReason": {
+      "enum": [
+        "needs-input",
+        "environment",
+        "access",
+        "data",
+        "other"
+      ],
+      "description": "Why a blocked case was blocked. needs-input = the human did not answer an `ask` in time."
+    },
     "summary": {
       "type": "string",
       "description": "One sentence a reviewer can trust without opening evidence."
@@ -180,6 +190,39 @@
         },
         "notes": {
           "type": "string"
+        }
+      }
+    },
+    "learnings": {
+      "type": "array",
+      "description": "Findings a future run in this situation would need. Imported as proposed memories; reused only after a human approves them.",
+      "items": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "data",
+              "procedure",
+              "env-quirk",
+              "gotcha"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "description": "Never a secret."
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     },

@@ -26,7 +26,9 @@ Read each step's reference **when you reach that step**, not before.
 1. **Plan** → `references/plan.md`. Reuse or draft `.qa/plans/<KEY>.plan.json`, then get the
    human's approval of the case list before running.
 2. **Init + viewer** → `$Q init <plan> [--label txt] [--record] [--only TC-1,TC-2]`, then
-   `$Q open <runId>`. Open the viewer before launching agents: recording streams to it.
+   `$Q open <runId>`. Open the viewer before launching agents: recording streams to it, and
+   agents ask the human through it. `init` adds relevant memories to each brief and lists any
+   `secret needed: env:NAME` you must pass in the agent prompt.
 3. **Execute** → `references/execute.md`. One Test Agent per group, **one group at a time**.
    Never read agent transcripts, evidence or results here; use `$Q status <runId>`.
 4. **Validate** → `$Q validate <runId>`. Fix credential leaks yourself; send other warnings back
@@ -34,13 +36,16 @@ Read each step's reference **when you reach that step**, not before.
 5. **Review + report** → `references/review.md`. The human approves, rejects or asks for a
    retest in the viewer; `$Q init <plan> --retest <runId>` reruns exactly those cases.
 
-Only when needed: `references/recording.md` (video), `references/annotate.md` (screenshot
-marks), `references/chat.md` (the viewer's agent chat).
+Only when needed: `references/memory.md` (what agents remember, live questions, secrets),
+`references/recording.md` (video), `references/annotate.md` (screenshot marks),
+`references/chat.md` (the viewer's agent chat).
 
 ## Guardrails
 
 - Viewer and server are local only (`127.0.0.1`). Keep `.qa/runs/` out of version control.
-- Never write credentials into plans, briefs, results, or evidence. `validate` scans for leaks.
+- Never write credentials into plans, briefs, results, evidence, or memory. `validate` scans
+  for leaks; memory holds secrets only as `env:NAME` references.
+- Nothing an agent learns is reused until a human approves it.
 - Synthetic test data only; blur personal data in screenshots.
 - Don't post to the issue tracker or transition a ticket without explicit confirmation.
 - Keep the viewer generic: run facts belong in plans and results, project facts in

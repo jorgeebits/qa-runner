@@ -147,6 +147,7 @@ export function loadRun(runId) {
     const base = join(dir, 'tc', tc.id);
     const result = normalizeResult(readJson(join(base, 'result.json')));
     const progress = readJson(join(base, 'progress.json'));
+    const questions = readJson(join(base, 'questions.json'), []);
     const evidenceDir = join(base, 'evidence');
     const all = existsSync(evidenceDir)
       ? readdirSync(evidenceDir).filter((f) => !f.startsWith('.') && statSync(join(evidenceDir, f)).isFile())
@@ -168,10 +169,16 @@ export function loadRun(runId) {
       status,
       result,
       progress,
+      questions,
       files,
       annotations,
       review: review[tc.id] || null,
-      warnings: checkContract(tc, result, files, meta, evidenceDir, plan),
+      warnings: [
+        ...checkContract(tc, result, files, meta, evidenceDir, plan),
+        ...(result?.blockedReason === 'needs-input' && !questions.length
+          ? ['blocked for missing input, but no question was asked (use `ask`).']
+          : []),
+      ],
     };
   });
   return { id: runId, plan, meta, testCases, config: viewerConfig() };

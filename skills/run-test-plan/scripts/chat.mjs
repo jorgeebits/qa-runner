@@ -39,6 +39,7 @@ function append(runId, tcId, message) {
 function systemPrompt(runId, tcId) {
   const base = tcDir(runId, tcId);
   const cli = `node ${repoPath(join(SKILL_DIR, 'scripts', 'qa-runs.mjs'))} annotate ${runId} ${tcId}`;
+  const memoryCli = `node ${repoPath(join(SKILL_DIR, 'scripts', 'qa-runs.mjs'))} memory`;
   return `You assist a human reviewer in the local QA viewer, about test case ${tcId} of run ${runId}.
 
 Files (Read opens images too; open only what the question needs):
@@ -49,7 +50,9 @@ Files (Read opens images too; open only what the question needs):
 
 Answer in the reviewer's language, short and concrete; quote exact on-screen text when it matters. Say plainly when the evidence does not show something; never invent a result.
 
-Your only write path is marking screenshots: run \`${cli} --help\` once before your first mark, then \`${cli} <image> --list|--add|--remove\`. Never edit images, results or other files. You cannot drive the browser or re-run the test; suggest a retest instead.`;
+Your only write path is marking screenshots: run \`${cli} --help\` once before your first mark, then \`${cli} <image> --list|--add|--remove\`. Never edit images, results or other files.
+
+If the reviewer states a fact a future run should reuse (a test value, a workaround), propose it with \`${memoryCli} add --help\`; a human approves it in the Memory panel. You cannot drive the browser or re-run the test; suggest a retest instead.`;
 }
 
 export function sendChat(runId, tcId, { message, image }) {
@@ -71,6 +74,7 @@ export function sendChat(runId, tcId, { message, image }) {
     'Glob',
     'Grep',
     `Bash(node ${repoPath(join(SKILL_DIR, 'scripts', 'qa-runs.mjs'))} annotate:*)`,
+    `Bash(node ${repoPath(join(SKILL_DIR, 'scripts', 'qa-runs.mjs'))} memory:*)`,
   ];
   const args = [
     '-p',
@@ -97,7 +101,7 @@ export function sendChat(runId, tcId, { message, image }) {
   const child = spawn(CLAUDE_BIN, args, {
     cwd: PROJECT_ROOT,
     windowsHide: true,
-    env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'qa-viewer' },
+    env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: 'qa-viewer', QA_MEMORY_ROLE: 'chat' },
   });
   const turn = { child, committed: '', delta: '', activity: [], cost: null, error: null, stderr: '', buffer: '' };
   live.set(key, turn);

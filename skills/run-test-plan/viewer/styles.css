@@ -1248,3 +1248,126 @@ details.file pre {
     max-width: calc(100vw - 32px);
   }
 }
+
+/* Live questions and memory */
+.flag-ask {
+  display: inline-flex;
+  color: var(--running);
+}
+.flag-ask .icon {
+  width: 14px;
+  height: 14px;
+}
+.question-form {
+  border-color: var(--running);
+}
+.question-form h3,
+.card-body > h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+}
+.question-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 var(--space-2);
+}
+.question-row input[name='answer'] {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.question-row select {
+  padding: 7px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+.question-row .check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+.answers {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+.memory-btn {
+  position: relative;
+}
+.memory-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--running);
+  color: var(--bg);
+  font: 700 10px/16px var(--mono);
+  text-align: center;
+}
+.memory-panel {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+}
+.memory-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 var(--space-1);
+  font-size: 15px;
+}
+.memory-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.memory-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.memory-item > div:first-child {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.memory-item p {
+  margin: var(--space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+.memory-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.question-form .meta,
+.memory-panel .meta {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.memory-panel .count {
+  color: var(--muted);
+  font: 600 12px var(--mono);
+}

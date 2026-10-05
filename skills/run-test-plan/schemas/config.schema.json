@@ -81,6 +81,21 @@
           "fileBug": "create-bug-ticket"
         }
       ]
+    },
+    "memory": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "default": ".qa/memory",
+          "description": "Project memory folder; commit it so the team shares what agents learned."
+        },
+        "briefLimit": {
+          "type": "integer",
+          "default": 10,
+          "description": "Most memory pointers per brief."
+        }
+      }
     }
   }
 }

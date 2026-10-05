@@ -28,7 +28,7 @@
       "title": "Manager sees the same rule",
       "group": "mx-manager",
       "variants": { "country": "MX", "role": "manager" },
-      "steps": [{ "n": 1, "action": "Repeat TC-1 as a manager", "expected": "Same inline error" }],
+      "steps": [{ "n": 1, "action": "Repeat TC-1 as a manager; enter the coupon code if asked", "expected": "Same inline error" }],
       "expected": "The rule does not depend on role.",
       "referenceCheck": "always"
     }

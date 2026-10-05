@@ -118,8 +118,128 @@ async function loadRun({ force = false } = {}) {
   renderHeader();
   renderFilters();
   renderList();
-  if (force || !document.activeElement?.closest?.('.review-bar')) renderDetail();
+  if (force || !document.activeElement?.closest?.('.review-bar, .question-form')) renderDetail();
+  renderMemoryBadge();
   scheduleNext();
+}
+
+const openQuestions = (tc) => (tc.questions || []).filter((q) => !q.answeredAt);
+
+function questionCards(tc) {
+  const answered = (tc.questions || []).filter((q) => q.answeredAt);
+  const open = openQuestions(tc)
+    .map(
+      (q) => `
+    <form class="card question-form" data-qid="${esc(q.id)}" aria-labelledby="q-${esc(q.id)}">
+      <div class="card-body">
+        <h3 id="q-${esc(q.id)}">${icon('question')}The agent needs: ${esc(q.field)}</h3>
+        ${q.context ? `<p class="meta">${esc(q.context)}</p>` : ''}
+        ${q.screenshot ? `<button type="button" class="btn" data-zoom="${esc(q.screenshot)}">${icon('image')}${esc(q.screenshot)}</button>` : ''}
+        <div class="question-row">
+          <label class="sr-only" for="answer-${esc(q.id)}">Answer</label>
+          <input id="answer-${esc(q.id)}" name="answer" autocomplete="off" required placeholder="Answer for the agent" />
+          <label class="check"><input type="checkbox" name="sensitive" /> Sensitive (not saved)</label>
+          <label class="sr-only" for="remember-${esc(q.id)}">Remember</label>
+          <select id="remember-${esc(q.id)}" name="remember">
+            <option value="">Don't remember</option>
+            <option value="project">Remember for this project</option>
+            <option value="user">Remember just for me</option>
+          </select>
+          <button type="submit" class="btn primary">${icon('send')}Send</button>
+        </div>
+        <p class="meta">Waiting since ${esc(fmtDate(q.askedAt))}. Remembered answers are offered to future runs in the same variant.</p>
+      </div>
+    </form>`,
+    )
+    .join('');
+  const done = answered.length
+    ? `<div class="card"><div class="card-body"><h3>${icon('question')}Answers given</h3><ul class="answers">${answered
+        .map(
+          (q) =>
+            `<li><strong>${esc(q.field)}</strong>: <span class="mono">${esc(q.answer)}</span>${q.memoryId ? ` <span class="tag">${icon('memory')}remembered ${esc(q.memoryId)}</span>` : ''}</li>`,
+        )
+        .join('')}</ul></div></div>`
+    : '';
+  return open + done;
+}
+
+async function sendAnswer(form) {
+  const data = new FormData(form);
+  const sensitive = data.get('sensitive') === 'on';
+  if (sensitive && data.get('remember')) return toast('Sensitive answers cannot be remembered.', true);
+  const button = form.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const answered = await api(
+      `/api/runs/${encodeURIComponent(state.runId)}/answer/${encodeURIComponent(state.tcId)}/${encodeURIComponent(form.dataset.qid)}`,
+      { method: 'POST', body: JSON.stringify({ answer: data.get('answer'), sensitive, remember: data.get('remember') || null }) },
+    );
+    toast(answered.memoryId ? `Sent and remembered as ${answered.memoryId}` : 'Sent to the agent');
+    document.activeElement?.blur();
+    await loadRun({ force: true });
+  } catch (error) {
+    button.disabled = false;
+    toast(error.message, true);
+  }
+}
+
+async function renderMemoryBadge() {
+  try {
+    state.memory = await api('/api/memory');
+  } catch {
+    return;
+  }
+  const proposed = state.memory.filter((m) => m.status === 'proposed').length;
+  const badge_ = $('#memory-count');
+  badge_.hidden = !proposed;
+  badge_.textContent = proposed;
+  if ($('#memory-panel').open) renderMemoryPanel();
+}
+
+function renderMemoryPanel() {
+  const groups = [
+    ['proposed', 'To review', 'Proposed by agents or the chat. Nothing here is reused until you approve it.'],
+    ['active', 'Active', 'Offered to Test Agents in matching cases.'],
+    ['stale', 'Stale', 'Failed twice or retired by hand. Not offered.'],
+  ];
+  const actions = {
+    proposed: [['approve', 'Approve', 'primary'], ['reject', 'Reject', '']],
+    active: [['stale', 'Retire', '']],
+    stale: [['activate', 'Reactivate', ''], ['delete', 'Delete', '']],
+  };
+  const row = (m) => `
+    <li class="memory-item">
+      <div>
+        <span class="tag mono">${esc(m.id)}</span> <span class="tag">${esc(m.kind)}</span> <span class="tag">${esc(m.share)}</span>
+        ${Object.entries(m.scope?.variants || {}).map(([k, v]) => `<span class="tag">${esc(variantLabel(k))}: ${esc(v)}</span>`).join(' ')}
+        <p>${esc(m.text)}</p>
+        ${m.value ? `<p class="meta">Value: <span class="mono">${esc(m.value)}</span></p>` : ''}
+        ${m.secretRef ? `<p class="meta">Secret from <span class="mono">${esc(m.secretRef)}</span></p>` : ''}
+        <p class="meta">${[m.source?.run && `from ${m.source.run}${m.source.tc ? ` / ${m.source.tc}` : ''}`, m.stats && `used ${m.stats.used || 0}, failed ${m.stats.failed || 0}`, m.expires && `expires ${m.expires}`].filter(Boolean).map(esc).join(' · ')}</p>
+      </div>
+      <div class="memory-actions">${actions[m.status]
+        .map(([action, label, cls]) => `<button type="button" class="btn ${cls}" data-mem="${esc(m.id)}" data-mem-action="${action}">${label}</button>`)
+        .join('')}</div>
+    </li>`;
+  $('#memory-body').innerHTML = groups
+    .map(([status, title, hint]) => {
+      const items = (state.memory || []).filter((m) => m.status === status);
+      return items.length || status !== 'stale'
+        ? `<section><h3>${title} <span class="count">${items.length}</span></h3><p class="meta">${hint}</p>${items.length ? `<ul class="memory-list">${items.map(row).join('')}</ul>` : '<p class="empty">Nothing here.</p>'}</section>`
+        : '';
+    })
+    .join('');
+}
+
+async function memoryAction(id, action) {
+  if ((action === 'reject' || action === 'delete') && !confirm(`Delete memory ${id}?`)) return;
+  try {
+    await api(`/api/memory/${encodeURIComponent(id)}/${action}`, { method: 'POST', body: '{}' });
+    await renderMemoryBadge();
+    renderMemoryPanel();
+  } catch (error) {
+    toast(error.message, true);
+  }
 }
 
 function scheduleNext() {
@@ -237,6 +357,7 @@ function renderList() {
           <span class="status-dot s-${esc(tc.status)}">${icon(tc.status)}</span>
           <span class="id">${esc(tc.id)}</span>
           <span class="flags">
+            ${openQuestions(tc).length ? `<span class="flag-ask" title="The agent is waiting for your answer">${icon('question')}</span>` : ''}
             ${tc.warnings.length ? `<span class="flag-warn" title="${tc.warnings.length} contract warning(s)">${icon('warn')}${tc.warnings.length}</span>` : ''}
             ${tc.review?.verdict ? `<span class="review-mark r-${esc(tc.review.verdict)}" title="Reviewed: ${esc(tc.review.verdict)}">${icon(tc.review.verdict)}</span>` : ''}
           </span>
@@ -326,6 +447,7 @@ function renderDetail() {
         ? `<div class="callout info">${icon(tc.status)}<div><strong>${tc.status === 'running' ? 'A Test Agent is executing this case' : 'Waiting for a Test Agent'}</strong>${esc(tc.progress?.note || '')} <span class="saved">${esc(fmtDate(tc.progress?.at))}</span></div></div>`
         : ''
     }
+    ${questionCards(tc)}
     ${tc.result?.__parseError ? `<div class="callout">${icon('warn')}<div><strong>result.json could not be parsed</strong>${esc(tc.result.__parseError)}</div></div>` : ''}
     ${
       tc.warnings.length
@@ -704,10 +826,15 @@ document.addEventListener('click', async (event) => {
     return;
   }
   const target = event.target.closest(
-    '[data-tc],[data-status],[data-review],[data-verdict],[data-zoom],[data-edit],[data-ask],[data-lb],[data-marks-toggle],#open-chat,#refresh,#theme,#shortcuts,.lightbox-close,.lightbox-prev,.lightbox-next',
+    '[data-tc],[data-status],[data-review],[data-verdict],[data-zoom],[data-edit],[data-ask],[data-lb],[data-marks-toggle],[data-mem-action],#open-chat,#open-memory,#refresh,#theme,#shortcuts,.lightbox-close,.lightbox-prev,.lightbox-next',
   );
   if (!target) return;
   if (target.id === 'open-chat') return chat.open();
+  if (target.id === 'open-memory') {
+    renderMemoryPanel();
+    return $('#memory-panel').showModal();
+  }
+  if (target.dataset.memAction) return memoryAction(target.dataset.mem, target.dataset.memAction);
   if (target.dataset.edit) return openLightbox(target.dataset.edit, { edit: true });
   if (target.dataset.ask) return chat.open({ image: target.dataset.ask });
   if (target.dataset.marksToggle !== undefined || target.dataset.lb === 'toggle') {
@@ -746,6 +873,10 @@ document.addEventListener('click', async (event) => {
 });
 
 document.addEventListener('submit', (event) => {
+  if (event.target.classList.contains('question-form')) {
+    event.preventDefault();
+    return sendAnswer(event.target);
+  }
   if (event.target.id !== 'review-form') return;
   event.preventDefault();
   saveReview(event.submitter?.dataset.next === 'true');
@@ -785,7 +916,7 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowRight') moveLightbox(1);
     return;
   }
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !event.target.closest?.('.question-form')) {
     event.preventDefault();
     return saveReview(true);
   }
@@ -794,7 +925,7 @@ document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') event.target.blur();
     return;
   }
-  if (event.ctrlKey || event.metaKey || event.altKey || $('#help').open) return;
+  if (event.ctrlKey || event.metaKey || event.altKey || $('#help').open || $('#memory-panel').open) return;
   const actions = {
     j: () => moveCase(1),
     k: () => moveCase(-1),
@@ -805,6 +936,7 @@ document.addEventListener('keydown', (event) => {
     '/': () => $('#search').focus(),
     '?': () => $('#help').showModal(),
     t: () => chat.toggle(),
+    m: () => $('#open-memory').click(),
   };
   if (actions[event.key]) {
     event.preventDefault();

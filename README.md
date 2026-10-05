@@ -17,6 +17,10 @@ plan.json ──init──▶ brief.md per case ──Test Agent (browser)──
   spotlight, blur), recordings, a per-case agent chat, and Approve / Needs retest / Reject.
 - **Reference comparison.** Optionally compare each case against another app (legacy,
   production, a design) and report deviations.
+- **Memory.** When an agent needs a value it does not have, it asks you in the viewer and waits.
+  Tick "Remember" and later runs in the same situation reuse the answer. Agents also propose
+  what they learned; nothing is reused until you approve it. Secrets are stored only as
+  `env:NAME` references.
 
 ## Requirements
 
@@ -45,7 +49,8 @@ Create `.qa/config.json` in the project you test (every field is optional; see
 }
 ```
 
-Add `.qa/runs/` to `.gitignore`. `examples/` holds a complete config and plan.
+Add `.qa/runs/` to `.gitignore`; commit `.qa/memory/` to share what agents learned with your
+team. `examples/` holds a complete config, plan and memory.
 
 ## Use
 
@@ -59,6 +64,7 @@ The CLI also works on its own:
 node skills/run-test-plan/scripts/qa-runs.mjs init .qa/plans/SHOP-42.plan.json --label smoke
 node skills/run-test-plan/scripts/qa-runs.mjs open
 node skills/run-test-plan/scripts/qa-runs.mjs validate <runId>
+node skills/run-test-plan/scripts/qa-runs.mjs memory --help
 ```
 
 | Variable | Default | Purpose |
@@ -68,6 +74,7 @@ node skills/run-test-plan/scripts/qa-runs.mjs validate <runId>
 | `QA_VIEWER_PORT` | `4321` | Viewer port |
 | `QA_CHAT_MODEL` | `sonnet` | Model behind the viewer's agent chat |
 | `QA_CLAUDE_BIN` | `claude` | Claude Code binary the chat runs |
+| `QA_USER_MEMORY_DIR` | `~/.claude/qa-memory` | Personal memory folder |
 
 Plans and results written with `schemaVersion: 1` still load; they are mapped to version 2 when
 read.

@@ -24,6 +24,8 @@ Rules:
   blocked = the environment or data prevented the test (no access, locked user, missing test
   data, session lost and not recoverable); skipped = you deliberately did not run it. Never
   report pass on a step you could not see.
+- Never guess a missing value: follow the brief's "Missing input" step (memory recall, then
+  `ask`, which waits for the human).
 - Do not edit source code. Do not post to the issue tracker. Do not create data the brief does not ask for.
 - Close the browser when the last case is done.
 {extra guardrails for this group, if any}

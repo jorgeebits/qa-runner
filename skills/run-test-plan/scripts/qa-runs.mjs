@@ -13,10 +13,30 @@
 //   annotate <runId> <tcId> <image> [--list] [--add '<json>'] [--replace] [--remove <ids|all>]
 //            [--author agent|chat|reviewer] [--summary txt]
 //                             Read or change a screenshot's annotations (arrows, boxes, text…).
+//   ask <runId> <tcId> --field txt [--context txt] [--screenshot file] [--timeout 300]
+//                             Ask the human for a missing input and wait for the answer.
+//   answer <runId> <tcId> <qid> <value> [--sensitive] [--remember project|user]
+//   questions [runId]         Open questions, for answering from the terminal.
+//   memory <list|show|recall|add|used|approve|stale|reject|prune> …   (memory --help)
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { imageSize, readAnnotations, removeAnnotations, writeAnnotations } from './annotations.mjs';
+import {
+  BRIEF_LIMIT,
+  addMemory,
+  caseQuery,
+  findMemory,
+  loadMemories,
+  pointer,
+  prune,
+  rank,
+  recordUse,
+  removeMemory,
+  scanMemories,
+  updateMemory,
+} from './memory.mjs';
+import { answerQuestion, askQuestion, openQuestions, readQuestions, waitForAnswer } from './questions.mjs';
 import {
   CONFIG,
   PORT,
@@ -51,12 +71,13 @@ const fail = (message) => {
   process.exit(1);
 };
 
-const commands = { init, open, serve, mark, validate, status, latest, annotate };
+const commands = { init, open, serve, mark, validate, status, latest, annotate, ask, answer, questions, memory };
 if (!commands[command]) {
   console.log(
     readFileSync(new URL(import.meta.url), 'utf8')
       .split('\n')
-      .slice(1, 17)
+      .slice(1)
+      .filter((line, i, lines) => lines.slice(0, i + 1).every((l) => l.startsWith('//')))
       .join('\n')
       .replace(/^\/\/ ?/gm, ''),
   );
@@ -77,8 +98,13 @@ async function init() {
     const only = new Set(String(flags.only).split(','));
     selected = selected.filter((tc) => only.has(tc.id));
   }
+  const carried = new Map();
   if (flags.retest) {
     const previous = loadRun(flags.retest);
+    for (const tc of previous.testCases) {
+      const answered = (tc.questions || []).filter((q) => q.answeredAt);
+      if (answered.length) carried.set(tc.id, answered);
+    }
     const redo = new Set(
       previous.testCases
         .filter(
@@ -107,19 +133,33 @@ async function init() {
   });
   writeJson(join(dir, 'review.json'), {});
 
+  const briefed = [];
   for (const tc of selected) {
     const base = tcDir(runId, tc.id);
     mkdirSync(join(base, 'evidence'), { recursive: true });
     const record = Boolean(flags.record || tc.record || plan.defaults?.record);
     if (record) writeRecordingSnippets(runId, tc.id);
     writeCaptureSnippet(runId, tc.id);
-    writeFileSync(join(base, 'brief.md'), brief(frozen, tc, runId, record));
+    const memories = rank(
+      caseQuery(tc),
+      { variants: tc.variants, target: 'app' },
+      { limit: BRIEF_LIMIT, includeQuirks: true },
+    );
+    briefed.push(...memories.map((m) => m.entry));
+    writeFileSync(
+      join(base, 'brief.md'),
+      brief(frozen, tc, runId, record, { memories: memories.map((m) => m.entry), carried: carried.get(tc.id) || [] }),
+    );
   }
+  const secrets = [...new Set(briefed.filter((e) => e.secretRef).map((e) => e.secretRef))];
 
   console.log(`OK run=${runId}`);
   console.log(`dir=${repoPath(dir)}`);
   console.log(`viewer=http://127.0.0.1:${PORT}/#/run/${encodeURIComponent(runId)}`);
   for (const [group, ids] of groupIds(selected)) console.log(`group ${group}: ${ids.join(', ')}`);
+  if (briefed.length) console.log(`memory: ${new Set(briefed.map((e) => e.id)).size} pointer(s) in briefs`);
+  for (const ref of secrets)
+    console.log(`secret needed: ${ref} (${process.env[ref.slice(4)] ? 'set' : 'NOT set'}); pass it in the agent prompt`);
 }
 
 function checkPlan(plan) {
@@ -160,7 +200,7 @@ function groupIds(testCases) {
 
 // The brief is the only input a Test Agent gets for one test case: what to do, where to write,
 // and the exact shape to report back. Keeping it self-contained is what keeps agents small.
-function brief(plan, tc, runId, record) {
+function brief(plan, tc, runId, record, { memories = [], carried = [] } = {}) {
   const base = tcDir(runId, tc.id);
   const evidence = repoPath(join(base, 'evidence'));
   const cli = repoPath(join(SKILL_DIR, 'scripts', 'qa-runs.mjs'));
@@ -207,6 +247,24 @@ function brief(plan, tc, runId, record) {
           ...Object.entries(CONFIG.capabilities).map(([use, skill]) => `- ${use}: \`${skill}\``),
         ]
       : []),
+    ...(memories.length
+      ? [
+          '',
+          '## Memory from earlier runs (human-confirmed; verify before relying on it)',
+          ...memories.map(pointer),
+        ]
+      : []),
+    ...(carried.length
+      ? [
+          '',
+          '## Answers given during the previous run',
+          ...carried.map((q) =>
+            q.sensitive
+              ? `- ${q.field}: sensitive; the orchestrator passes it in your prompt`
+              : `- ${q.field}: \`${q.answer}\``,
+          ),
+        ]
+      : []),
     ...(tc.preconditions?.length ? ['', '## Preconditions', ...tc.preconditions.map((p) => `- ${p}`)] : []),
     '',
     '## Steps',
@@ -228,7 +286,9 @@ function brief(plan, tc, runId, record) {
           `3. Recording is ON. Right before step 1 run \`browser_run_code_unsafe\` with \`filename: "${repoPath(join(base, '.rec', 'start.js'))}"\`; after the last step run it with \`filename: "${repoPath(join(base, '.rec', 'stop.js'))}"\`. The viewer server must be running (\`node ${cli} open\`). Stop prints the video file name; list it in \`evidence\` with kind \`video\`, and cite it in the \`evidence\` of every step that has no still of its own.`,
         ]
       : []),
-    `${record ? 4 : 3}. Write \`${repoPath(join(base, 'result.json'))}\` (contract: \`${repoPath(join(SKILL_DIR, 'schemas', 'test-result.schema.json'))}\`). Use this skeleton:`,
+    `${record ? 4 : 3}. **Missing input** (a value the brief and memory above do not give): first \`node ${cli} memory recall "<what you need>" --run ${runId} --tc ${tc.id}\`. If nothing fits, ask the human: \`node ${cli} ask ${runId} ${tc.id} --field "<what you need>" --context "<where and why>" [--screenshot <file>]\`. It waits up to 5 minutes and prints \`ANSWER <value>\`; on \`TIMEOUT\`, finish the case as \`blocked\` with \`blockedReason: "needs-input"\`. Never guess a value.`,
+    `${record ? 5 : 4}. **Memory feedback.** After using a memory: \`node ${cli} memory used <id>\` (add \`--failed\` if it did not work). Put anything a future run in this situation would need in \`learnings\`; a human approves it before it is reused.`,
+    `${record ? 6 : 5}. Write \`${repoPath(join(base, 'result.json'))}\` (contract: \`${repoPath(join(SKILL_DIR, 'schemas', 'test-result.schema.json'))}\`). Use this skeleton:`,
     '',
     '```json',
     JSON.stringify(
@@ -250,6 +310,7 @@ function brief(plan, tc, runId, record) {
         ...(targets.reference && {
           reference: { checked: false, result: 'same | deviation | improvement | n/a', notes: '' },
         }),
+        learnings: [],
         notes: '',
       },
       null,
@@ -257,7 +318,7 @@ function brief(plan, tc, runId, record) {
     ),
     '```',
     '',
-    `${record ? 5 : 4}. Final reply to the orchestrator: ONE line — \`${tc.id} <STATUS> — <summary>\`. Everything else lives in result.json.`,
+    `${record ? 7 : 6}. Final reply to the orchestrator: ONE line — \`${tc.id} <STATUS> — <summary>\`. Everything else lives in result.json.`,
     '',
   ];
   return lines.join('\n');
@@ -486,6 +547,8 @@ function validate() {
   if (!runId || !existsSync(runDir(runId))) fail('validate needs a run id.');
   const run = loadRun(runId);
   const counts = countStatuses(run);
+  const proposed = importLearnings(run);
+  const memoryWarnings = scanMemories();
   writeJson(join(runDir(runId), 'run.json'), {
     id: runId,
     validatedAt: new Date().toISOString(),
@@ -493,6 +556,177 @@ function validate() {
     testCases: run.testCases.map(({ id, status, warnings, review }) => ({ id, status, warnings, review })),
   });
   printStatus(run, counts, true);
+  if (proposed) console.log(`memory: ${proposed} learning(s) proposed; approve them in the viewer's Memory panel.`);
+  for (const w of memoryWarnings) console.log(`! ${w}`);
+}
+
+// Learnings become *proposed* memories: nothing an agent writes is reused until a human approves
+// it, so one wrong conclusion cannot quietly steer every later run. Idempotent per learning.
+function importLearnings(run) {
+  const known = new Set(
+    loadMemories({ all: true })
+      .filter((e) => e.source?.run === run.id)
+      .map((e) => `${e.source.tc}#${e.source.learning}`),
+  );
+  let added = 0;
+  for (const tc of run.testCases) {
+    (tc.result?.learnings || []).forEach((learning, i) => {
+      if (known.has(`${tc.id}#${i}`) || !learning?.text) return;
+      try {
+        addMemory({
+          kind: learning.kind,
+          text: learning.text,
+          value: learning.value,
+          triggers: learning.triggers,
+          status: 'proposed',
+          scope: tc.variants && Object.keys(tc.variants).length ? { variants: tc.variants } : undefined,
+          source: { run: run.id, tc: tc.id, learning: i, confirmedBy: null },
+        });
+        added += 1;
+      } catch (error) {
+        console.log(`! ${tc.id} learning ${i} not imported: ${error.message}`);
+      }
+    });
+  }
+  return added;
+}
+
+async function ask() {
+  const [runId, tcId] = args;
+  if (!runId || !tcId || !flags.field)
+    fail('usage: ask <runId> <tcId> --field "<what you need>" [--context txt] [--screenshot file] [--timeout 300]');
+  let question;
+  try {
+    question = askQuestion(runId, tcId, { field: flags.field, context: flags.context, screenshot: flags.screenshot });
+  } catch (error) {
+    fail(error.message);
+  }
+  const timeout = Math.min(Number(flags.timeout) || 300, 1800);
+  console.error(`asked ${question.id}; waiting up to ${timeout}s for the human (viewer or \`answer\`)…`);
+  const value = await waitForAnswer(runId, tcId, question.id, timeout);
+  if (value === undefined) {
+    console.log(`TIMEOUT ${question.id}: finish this case as blocked with blockedReason "needs-input".`);
+    process.exit(2);
+  }
+  if (value === null) fail(`${question.id} was answered as sensitive, but the answer could not be read.`);
+  console.log(`ANSWER ${value}`);
+}
+
+function answer() {
+  const [runId, tcId, qid, ...value] = args;
+  if (!runId || !tcId || !qid || !value.length)
+    fail('usage: answer <runId> <tcId> <qid> <value> [--sensitive] [--remember project|user]');
+  try {
+    const remember = ['project', 'user'].includes(flags.remember) ? flags.remember : null;
+    const q = answerQuestion(runId, tcId, qid, {
+      answer: value.join(' '),
+      sensitive: Boolean(flags.sensitive),
+      remember,
+      by: 'orchestrator',
+    });
+    console.log(`OK ${tcId} ${qid} answered${q.memoryId ? `; remembered as ${q.memoryId}` : ''}`);
+  } catch (error) {
+    fail(error.message);
+  }
+}
+
+function questions() {
+  const runId = args[0] || listRuns()[0]?.id;
+  if (!runId) fail('no runs yet.');
+  const open = openQuestions(runId);
+  if (!open.length) return console.log(`${runId}: no open questions`);
+  for (const q of open)
+    console.log(`${q.tcId} ${q.id}  ${q.field}${q.context ? ` — ${q.context}` : ''}${q.screenshot ? ` [${q.screenshot}]` : ''}`);
+}
+
+function memoryHelp() {
+  return `memory list [--all]                 active memories (--all adds proposed, stale, expired)
+memory show <id>                    one memory in full
+memory recall "<query>" [--run R --tc T] [--limit 5]
+                                    best matches, scoped to the case's variants when --run/--tc are given
+memory add --text "<what it is>" [--value v | --secret-ref env:NAME] [--kind data|procedure|env-quirk|gotcha]
+           [--triggers "a,b"] [--variants '{"country":"MX"}'] [--target app] [--expires YYYY-MM-DD]
+           [--share project|user] [--status proposed]
+memory used <id> [--failed]         report whether a recalled memory worked (2 failures → stale)
+memory approve|stale|reject <id>    curate (reject deletes)
+memory prune [--yes]                delete stale and expired memories (dry run without --yes)
+Secrets are never stored: use --secret-ref env:NAME and keep the value in the environment.`;
+}
+
+// The viewer's chat agent may only read memory and propose new entries; it never approves,
+// retires or deletes. QA_MEMORY_ROLE is set by the chat server, not by the model.
+function memory() {
+  const [action, ...rest] = args;
+  if (!action || flags.help) return console.log(memoryHelp());
+  const asChat = process.env.QA_MEMORY_ROLE === 'chat';
+  if (asChat && !['list', 'show', 'recall', 'add'].includes(action)) fail(`the chat agent cannot run memory ${action}`);
+  try {
+    if (action === 'list') {
+      const entries = loadMemories({ all: Boolean(flags.all) });
+      if (!entries.length) return console.log('no memories');
+      for (const e of entries)
+        console.log(`${e.id}  ${e.status.padEnd(8)} ${e.share.padEnd(7)} ${e.kind.padEnd(9)} ${e.text.split('\n')[0].slice(0, 90)}`);
+    } else if (action === 'show') {
+      const e = findMemory(rest[0]);
+      if (!e) fail(`unknown memory ${rest[0]}`);
+      const { file, ...shown } = e;
+      console.log(JSON.stringify(shown, null, 2));
+    } else if (action === 'recall') {
+      const query = rest.join(' ');
+      if (!query) fail('usage: memory recall "<query>" [--run R --tc T]');
+      let context = {};
+      if (flags.run && flags.tc) {
+        const tc = loadRun(flags.run).testCases.find((t) => t.id === flags.tc);
+        context = { variants: tc?.variants || {}, target: 'app' };
+      }
+      const hits = rank(query, context, { limit: Number(flags.limit) || 5 });
+      if (!hits.length) return console.log('NO MATCH: ask the human with `ask` instead of guessing.');
+      for (const { entry, score } of hits)
+        console.log(`${pointer(entry).slice(2)}  [score ${score.toFixed(1)}, used ${entry.stats?.used || 0}, failed ${entry.stats?.failed || 0}]`);
+    } else if (action === 'add') {
+      let variants;
+      if (flags.variants)
+        try {
+          variants = JSON.parse(flags.variants);
+        } catch {
+          fail('--variants must be JSON, e.g. \'{"country":"MX"}\'');
+        }
+      const scope = { ...(variants && { variants }), ...(flags.target && { target: flags.target }) };
+      const entry = addMemory(
+        {
+          kind: flags.kind,
+          text: flags.text,
+          value: flags.value === true ? undefined : flags.value,
+          secretRef: flags['secret-ref'],
+          triggers: flags.triggers ? String(flags.triggers).split(',') : [],
+          scope,
+          expires: flags.expires,
+          status: asChat ? 'proposed' : flags.status,
+          source: { confirmedBy: asChat ? null : 'orchestrator', via: asChat ? 'chat' : 'cli' },
+        },
+        flags.share === 'user' ? 'user' : 'project',
+      );
+      console.log(`OK ${entry.id} ${entry.status} (${entry.share})`);
+    } else if (action === 'used') {
+      const e = recordUse(rest[0], !flags.failed);
+      console.log(`OK ${e.id} used=${e.stats.used} failed=${e.stats.failed} status=${e.status}`);
+    } else if (action === 'approve') {
+      const entry = findMemory(rest[0]);
+      if (!entry) fail(`unknown memory ${rest[0]}`);
+      updateMemory(entry.id, { status: 'active', source: { ...entry.source, confirmedBy: 'orchestrator' } });
+      console.log(`OK ${entry.id} active`);
+    } else if (action === 'stale') {
+      console.log(`OK ${updateMemory(rest[0], { status: 'stale' }).id} stale`);
+    } else if (action === 'reject') {
+      console.log(`OK ${removeMemory(rest[0]).id} deleted`);
+    } else if (action === 'prune') {
+      const doomed = prune({ dryRun: !flags.yes });
+      for (const e of doomed) console.log(`${flags.yes ? 'deleted' : 'would delete'} ${e.id} (${e.status}${e.expires ? `, expires ${e.expires}` : ''})`);
+      if (!doomed.length) console.log('nothing to prune');
+    } else fail(`unknown memory action "${action}"\n${memoryHelp()}`);
+  } catch (error) {
+    fail(error.message);
+  }
 }
 
 function status() {

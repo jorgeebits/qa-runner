@@ -10,6 +10,7 @@ saves and jumps to the next unreviewed case, `?` lists them all.
 Treat the verdicts as decisions:
 
 - `approved` → can be reported.
+- Point the reviewer to the Memory panel (`m`) when `validate` reports proposed learnings.
 - `needs-retest` / `rejected` → `$Q init <plan> --retest <runId>` creates a new run with exactly
   those cases (plus any fail/blocked/pending). The comment tells you what to change in the plan
   or brief first.

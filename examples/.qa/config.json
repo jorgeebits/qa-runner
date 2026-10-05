@@ -1,0 +1,10 @@
+{
+  "$schema": "../../skills/run-test-plan/schemas/config.schema.json",
+  "tracker": { "name": "GitHub", "issueUrl": "https://github.com/example/shop/issues/{key}" },
+  "targets": { "app": "New checkout", "reference": "Legacy checkout" },
+  "variants": {
+    "country": { "label": "Country", "values": ["US", "CA", "MX"] },
+    "role": { "label": "Role", "values": ["cashier", "manager"] }
+  },
+  "capabilities": { "login": "my-app-login" }
+}

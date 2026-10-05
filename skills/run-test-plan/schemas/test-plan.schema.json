@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-test-plan/test-plan.schema.json",
+  "title": "Test plan (orchestrator → Test Agent)",
+  "description": "What to test. Authored by the orchestrator, approved by the human, frozen into each run as plan.json. Never contains credentials. schemaVersion 1 plans (pos3Url/pos2Url, territory/store, parityCheck, jira) are still accepted and mapped on load.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "title",
+    "testCases"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1,
+        2
+      ],
+      "description": "Write 2. Version 1 is read for old runs only."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "description": "Usually the issue key, e.g. SHOP-42. Prefixes every run id."
+    },
+    "title": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "examples": [
+            "UAT",
+            "staging",
+            "local"
+          ]
+        },
+        "targets": {
+          "type": "object",
+          "description": "URL per target. 'app' is the system under test; 'reference' (optional) is what results are compared against: a legacy app, production, a design.",
+          "properties": {
+            "app": {
+              "type": "string"
+            },
+            "reference": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "user": {
+          "type": "string",
+          "description": "Login user only. The password goes in the agent prompt, never here."
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "tool": {
+          "enum": [
+            "playwright-mcp",
+            "chrome-devtools-mcp",
+            "playwright-spec"
+          ],
+          "default": "playwright-mcp"
+        },
+        "record": {
+          "type": "boolean",
+          "default": false
+        },
+        "referenceCheck": {
+          "enum": [
+            "always",
+            "on-deviation",
+            "never"
+          ],
+          "default": "on-deviation"
+        }
+      }
+    },
+    "references": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Repo paths (with section hints) an agent may read if it needs them."
+    },
+    "guardrails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Rules every agent must follow, e.g. 'never click Crear with an empty company name'."
+    },
+    "testCases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/testCase"
+      }
+    },
+    "issue": {
+      "type": "string",
+      "description": "Issue-tracker key the run reports to, e.g. PROJ-123. Linked through tracker.issueUrl in .qa/config.json."
+    }
+  },
+  "$defs": {
+    "testCase": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "steps",
+        "expected"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string",
+          "description": "Cases sharing a group run in ONE agent, in plan order (shared login/store/form)."
+        },
+        "variants": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Axes the behaviour forks on (country, store, role, plan tier…). Keys and allowed values come from variants in .qa/config.json."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "data": {
+          "type": "object",
+          "description": "Synthetic test data the agent must use."
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "n",
+              "action"
+            ],
+            "properties": {
+              "n": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "action": {
+                "type": "string"
+              },
+              "expected": {
+                "type": "string"
+              },
+              "evidenceRequired": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          }
+        },
+        "expected": {
+          "type": "string",
+          "description": "The end state that proves the case (reference-app wording when relevant)."
+        },
+        "referenceCheck": {
+          "enum": [
+            "always",
+            "on-deviation",
+            "never"
+          ]
+        },
+        "record": {
+          "type": "boolean"
+        },
+        "tool": {
+          "enum": [
+            "playwright-mcp",
+            "chrome-devtools-mcp",
+            "playwright-spec"
+          ]
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

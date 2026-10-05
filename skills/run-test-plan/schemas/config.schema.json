@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-test-plan/config.schema.json",
+  "title": "Project config (.qa/config.json)",
+  "description": "Everything project-specific lives here, so the plugin itself stays generic. Every field is optional.",
+  "type": "object",
+  "properties": {
+    "runsDir": {
+      "type": "string",
+      "default": ".qa/runs",
+      "description": "Relative to the project root. Keep it out of version control."
+    },
+    "plansDir": {
+      "type": "string",
+      "default": ".qa/plans"
+    },
+    "viewerPort": {
+      "type": "integer",
+      "default": 4321
+    },
+    "tracker": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "examples": [
+            "Jira",
+            "GitHub",
+            "Linear"
+          ]
+        },
+        "issueUrl": {
+          "type": "string",
+          "description": "Link template; {key} is replaced by the issue key.",
+          "examples": [
+            "https://example.atlassian.net/browse/{key}",
+            "https://github.com/org/repo/issues/{key}"
+          ]
+        }
+      }
+    },
+    "targets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Display label per target key.",
+      "default": {
+        "app": "App under test",
+        "reference": "Reference app"
+      }
+    },
+    "variants": {
+      "type": "object",
+      "description": "Axes test cases fork on. When present, plans are checked against it.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed values; omit for free text."
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Project skills a Test Agent may invoke on demand, by purpose: login, navigate, fileBug\u2026",
+      "examples": [
+        {
+          "login": "my-login-skill",
+          "fileBug": "create-bug-ticket"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "qa-runner",
+  "owner": { "name": "jorge.lopezg" },
+  "plugins": [
+    {
+      "name": "qa-runner",
+      "source": "./",
+      "description": "Run manual-style E2E test plans with browser agents and review them in a local viewer."
+    }
+  ]
+}

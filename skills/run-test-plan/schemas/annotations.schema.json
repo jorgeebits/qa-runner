@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-test-plan/annotations.schema.json",
+  "title": "Screenshot annotations (evidence/<image>.annotations.json)",
+  "description": "Stored geometry, in image pixels. Writers may send the loose input form (a `box` from boundingBox(), color names); scripts/annotations.mjs normalize() turns it into this shape.",
+  "type": "object",
+  "required": ["schemaVersion", "image", "items"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "image": { "type": "string" },
+    "width": { "type": ["integer", "null"] },
+    "height": { "type": ["integer", "null"] },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "items": { "type": "array", "maxItems": 60, "items": { "$ref": "#/$defs/item" } },
+    "elements": {
+      "type": "object",
+      "description": "Element boxes captured at test time, keyed by name, so later marks can target them.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "x": { "type": "number" },
+          "y": { "type": "number" },
+          "width": { "type": "number" },
+          "height": { "type": "number" }
+        }
+      }
+    },
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "at": { "type": "string" },
+          "author": { "enum": ["agent", "chat", "reviewer"] },
+          "mode": { "enum": ["append", "replace", "remove"] },
+          "count": { "type": "integer" },
+          "summary": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "enum": ["rect", "ellipse", "highlight", "spotlight", "blur", "arrow", "text", "step"] },
+        "author": { "enum": ["agent", "chat", "reviewer"] },
+        "color": { "type": "string", "description": "Hex. Inputs may use red, yellow, green, blue, magenta, white." },
+        "label": { "type": "string", "maxLength": 140 },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "w": { "type": "number", "description": "rect, ellipse, highlight, spotlight, blur" },
+        "h": { "type": "number" },
+        "from": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "arrow tail"
+        },
+        "to": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "arrow head"
+        },
+        "text": { "type": "string", "description": "text items" },
+        "size": { "type": "number", "description": "text font size in image pixels" },
+        "n": { "type": "integer", "description": "step number" }
+      }
+    }
+  }
+}

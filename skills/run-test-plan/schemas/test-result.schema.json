@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "run-test-plan/test-result.schema.json",
+  "title": "Test result (Test Agent → orchestrator and reviewer)",
+  "description": "Written by the Test Agent to tc/<id>/result.json. The viewer renders it next to the plan; qa-runs.mjs validate turns every gap into a contract warning.",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "testCaseId",
+    "status",
+    "summary",
+    "steps"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        1,
+        2
+      ],
+      "description": "Write 2."
+    },
+    "testCaseId": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "pass",
+        "fail",
+        "blocked",
+        "skipped"
+      ],
+      "description": "pass = expected end state proven; fail = product behaves wrong; blocked = environment/data prevented the test (no access, locked user, missing data); skipped = deliberately not run."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One sentence a reviewer can trust without opening evidence."
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "versions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Version per target or component, e.g. {app, server}."
+        },
+        "variants": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "n",
+          "status"
+        ],
+        "properties": {
+          "n": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "blocked",
+              "skipped",
+              "n/a"
+            ]
+          },
+          "actual": {
+            "type": "string",
+            "description": "What happened, with exact on-screen text where it matters."
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "File names inside evidence/."
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "file",
+          "kind"
+        ],
+        "properties": {
+          "file": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "screenshot",
+              "video",
+              "network",
+              "json",
+              "log",
+              "text"
+            ]
+          },
+          "caption": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "description": "Values produced by the run, e.g. customerNumber, transactionId."
+    },
+    "defects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "High",
+              "Medium",
+              "Low"
+            ]
+          },
+          "details": {
+            "type": "string"
+          },
+          "reference": {
+            "enum": [
+              "deviation",
+              "same",
+              "improvement",
+              "unknown"
+            ],
+            "description": "How the reference target behaves for the same input."
+          },
+          "issue": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "properties": {
+        "checked": {
+          "type": "boolean"
+        },
+        "result": {
+          "enum": [
+            "same",
+            "deviation",
+            "improvement",
+            "n/a"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

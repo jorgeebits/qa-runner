@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>QA Test Runs</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2316a34a'/%3E%3Cpath d='M9 16l5 5 9-10' stroke='white' stroke-width='3' fill='none'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="workbench.css" />
+    <script>
+      try {
+        const theme = localStorage.getItem('qa-theme');
+        if (theme) document.documentElement.dataset.theme = theme;
+      } catch {}
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#detail">Skip to test case</a>
+
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-pass" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+      <symbol id="i-fail" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></symbol>
+      <symbol id="i-blocked" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="m5.7 5.7 12.6 12.6" />
+      </symbol>
+      <symbol id="i-skipped" viewBox="0 0 24 24"><path d="m5 4 10 8-10 8V4zM19 5v14" /></symbol>
+      <symbol id="i-running" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6" /></symbol>
+      <symbol id="i-pending" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </symbol>
+      <symbol id="i-na" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+      <symbol id="i-approved" viewBox="0 0 24 24">
+        <path d="M7 11v9H4v-9h3zm0 0 4-8a2 2 0 0 1 2 2v4h5.5a2 2 0 0 1 2 2.3l-1.2 7A2 2 0 0 1 17.3 20H7" />
+      </symbol>
+      <symbol id="i-needs-retest" viewBox="0 0 24 24">
+        <path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5" />
+      </symbol>
+      <symbol id="i-rejected" viewBox="0 0 24 24">
+        <path d="M17 13V4h3v9h-3zm0 0-4 8a2 2 0 0 1-2-2v-4H5.5a2 2 0 0 1-2-2.3l1.2-7A2 2 0 0 1 6.7 4H17" />
+      </symbol>
+      <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3 2 21h20L12 3zM12 10v5M12 18h.01" /></symbol>
+      <symbol id="i-video" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="14" height="12" rx="2" />
+        <path d="m16 10 6-3v10l-6-3" />
+      </symbol>
+      <symbol id="i-image" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <circle cx="9" cy="9" r="2" />
+        <path d="m21 15-5-5L5 21" />
+      </symbol>
+      <symbol id="i-file" viewBox="0 0 24 24">
+        <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9l-6-6zM14 3v6h6" />
+      </symbol>
+      <symbol id="i-external" viewBox="0 0 24 24">
+        <path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+      </symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5" /></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+      </symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></symbol>
+      <symbol id="i-keyboard" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="2" />
+        <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10" />
+      </symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m21 21-4.3-4.3" />
+      </symbol>
+      <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" /></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-4.9A8 8 0 1 1 21 12z" />
+        <path d="M8.5 11h.01M12 11h.01M15.5 11h.01" />
+      </symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24">
+        <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+      </symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6M12 19h8" /></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" /></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24">
+        <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+        <circle cx="12" cy="12" r="3" />
+      </symbol>
+      <symbol id="t-select" viewBox="0 0 24 24"><path d="m4 4 7 17 2.5-7.5L21 11 4 4z" /></symbol>
+      <symbol id="t-arrow" viewBox="0 0 24 24"><path d="M5 19 19 5M10 5h9v9" /></symbol>
+      <symbol id="t-rect" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="1.5" /></symbol>
+      <symbol id="t-ellipse" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="9" ry="6.5" /></symbol>
+      <symbol id="t-highlight" viewBox="0 0 24 24">
+        <path d="m9 11-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
+      </symbol>
+      <symbol id="t-text" viewBox="0 0 24 24"><path d="M4 7V4h16v3M9 20h6M12 4v16" /></symbol>
+      <symbol id="t-step" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M10 9.5 12 8v8" />
+      </symbol>
+      <symbol id="t-spotlight" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M3 3h18v18H3z" opacity=".45" />
+      </symbol>
+      <symbol id="t-blur" viewBox="0 0 24 24">
+        <path
+          d="M4 4h4v4H4zM12 4h4v4h-4zM8 8h4v4H8zM16 8h4v4h-4zM4 12h4v4H4zM12 12h4v4h-4zM8 16h4v4H8zM16 16h4v4h-4z"
+        />
+      </symbol>
+      <symbol id="t-undo" viewBox="0 0 24 24">
+        <path d="M9 14 4 9l5-5" />
+        <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+      </symbol>
+      <symbol id="t-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></symbol>
+    </svg>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="icon"><use href="#i-pass" /></svg>
+        </span>
+        <span class="brand-name">QA Test Runs</span>
+      </div>
+      <label class="run-picker">
+        <span class="sr-only">Run</span>
+        <select id="run-select"></select>
+      </label>
+      <div class="topbar-right">
+        <span id="live" class="live" hidden role="status">
+          <span class="dot" aria-hidden="true"></span>
+          Live
+        </span>
+        <button id="refresh" class="icon-btn" type="button" aria-label="Refresh now" title="Refresh">
+          <svg class="icon"><use href="#i-refresh" /></svg>
+        </button>
+        <button
+          id="shortcuts"
+          class="icon-btn"
+          type="button"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts (?)"
+        >
+          <svg class="icon"><use href="#i-keyboard" /></svg>
+        </button>
+        <button id="theme" class="icon-btn" type="button" aria-label="Toggle light or dark theme" title="Theme">
+          <svg class="icon"><use href="#i-sun" /></svg>
+        </button>
+      </div>
+    </header>
+
+    <section id="run-header" class="run-header" aria-label="Run summary"></section>
+
+    <main class="layout">
+      <aside class="sidebar" aria-label="Test cases">
+        <div class="filters">
+          <label class="search">
+            <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+            <span class="sr-only">Filter test cases</span>
+            <input id="search" type="search" placeholder="Filter by id, title, variant…" autocomplete="off" />
+          </label>
+          <div class="chip-rows">
+            <div id="status-filters" class="chips" role="group" aria-label="Filter by result"></div>
+            <div id="review-filters" class="chips" role="group" aria-label="Filter by review"></div>
+          </div>
+        </div>
+        <nav id="tc-list" class="tc-list"></nav>
+      </aside>
+      <section id="detail" class="detail" tabindex="-1"></section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+    <dialog id="help" class="help" aria-labelledby="help-title">
+      <h2 id="help-title">Keyboard shortcuts</h2>
+      <dl>
+        <dt>
+          <kbd>j</kbd>
+          /
+          <kbd>k</kbd>
+        </dt>
+        <dd>Next / previous test case</dd>
+        <dt><kbd>a</kbd></dt>
+        <dd>Verdict: approve</dd>
+        <dt><kbd>n</kbd></dt>
+        <dd>Verdict: needs retest</dd>
+        <dt><kbd>r</kbd></dt>
+        <dd>Verdict: reject</dd>
+        <dt><kbd>c</kbd></dt>
+        <dd>Focus the comment</dd>
+        <dt>
+          <kbd>Ctrl</kbd>
+          +
+          <kbd>Enter</kbd>
+        </dt>
+        <dd>Save review and go to the next unreviewed case</dd>
+        <dt><kbd>t</kbd></dt>
+        <dd>Chat with your agent</dd>
+        <dt><kbd>/</kbd></dt>
+        <dd>Filter test cases</dd>
+        <dt><kbd>?</kbd></dt>
+        <dd>Show this help</dd>
+      </dl>
+      <form method="dialog"><button class="btn">Close</button></form>
+    </dialog>
+    <div id="lightbox" class="lightbox" hidden role="dialog" aria-modal="true" aria-label="Screenshot viewer">
+      <div class="lightbox-bar">
+        <span class="lightbox-title mono"></span>
+        <span class="spacer"></span>
+        <button type="button" class="btn ghost-dark" data-lb="toggle" aria-pressed="true">
+          <svg class="icon"><use href="#i-eye" /></svg>
+          Marks
+        </button>
+        <button type="button" class="btn ghost-dark" data-lb="edit">
+          <svg class="icon"><use href="#i-pencil" /></svg>
+          Edit marks
+        </button>
+        <button type="button" class="btn ghost-dark" data-lb="ask">
+          <svg class="icon"><use href="#i-chat" /></svg>
+          Ask the agent
+        </button>
+        <button class="icon-btn lightbox-close" type="button" aria-label="Close">
+          <svg class="icon"><use href="#i-close" /></svg>
+        </button>
+      </div>
+      <div class="lightbox-body">
+        <button class="icon-btn lightbox-prev" type="button" aria-label="Previous screenshot">
+          <svg class="icon"><use href="#i-chevron-left" /></svg>
+        </button>
+        <figure>
+          <img alt="" />
+          <figcaption></figcaption>
+        </figure>
+        <button class="icon-btn lightbox-next" type="button" aria-label="Next screenshot">
+          <svg class="icon"><use href="#i-chevron-right" /></svg>
+        </button>
+      </div>
+      <div class="lightbox-editor" hidden></div>
+    </div>
+
+    <aside id="chat" class="chat" hidden aria-labelledby="chat-title">
+      <header class="chat-head">
+        <span class="chat-avatar" aria-hidden="true">
+          <svg class="icon"><use href="#i-chat" /></svg>
+        </span>
+        <div>
+          <h2 id="chat-title">Chat with your agent</h2>
+          <span class="chat-subtitle mono"></span>
+        </div>
+        <span class="spacer"></span>
+        <button type="button" class="icon-btn" data-chat="reset" aria-label="New conversation" title="New conversation">
+          <svg class="icon"><use href="#i-plus" /></svg>
+        </button>
+        <button type="button" class="icon-btn" data-chat="close" aria-label="Close chat" title="Close (Esc)">
+          <svg class="icon"><use href="#i-close" /></svg>
+        </button>
+      </header>
+      <div class="chat-messages" aria-live="polite"></div>
+      <form class="chat-form">
+        <div class="chat-context" hidden>
+          <svg class="icon" aria-hidden="true"><use href="#i-image" /></svg>
+          <span></span>
+          <button
+            type="button"
+            class="icon-btn small"
+            data-chat="clear-image"
+            aria-label="Stop referring to this screenshot"
+          >
+            <svg class="icon"><use href="#i-close" /></svg>
+          </button>
+        </div>
+        <div class="chat-input">
+          <label class="sr-only" for="chat-input">Message</label>
+          <textarea id="chat-input" rows="1" placeholder="Ask, or request a mark on the screenshot…"></textarea>
+          <button type="submit" class="icon-btn send" data-chat="send" aria-label="Send">
+            <svg class="icon"><use href="#i-send" /></svg>
+          </button>
+          <button type="button" class="icon-btn send stop" data-chat="stop" aria-label="Stop the agent" hidden>
+            <svg class="icon"><use href="#i-stop" /></svg>
+          </button>
+        </div>
+        <p class="chat-hint">Enter sends · Shift+Enter new line</p>
+      </form>
+    </aside>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

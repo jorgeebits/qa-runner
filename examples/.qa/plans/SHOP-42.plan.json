@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 2,
+  "id": "SHOP-42",
+  "title": "Checkout requires an email before payment",
+  "issue": "42",
+  "environment": {
+    "name": "staging",
+    "targets": { "app": "https://staging.example.com", "reference": "https://legacy.example.com" },
+    "user": "qa-user-01"
+  },
+  "defaults": { "tool": "playwright-mcp", "referenceCheck": "on-deviation" },
+  "guardrails": ["Never submit a real payment; stop at the payment form."],
+  "testCases": [
+    {
+      "id": "TC-1",
+      "title": "Empty email blocks payment",
+      "group": "us-cashier",
+      "variants": { "country": "US", "role": "cashier" },
+      "data": { "item": "SKU-TEST-001" },
+      "steps": [
+        { "n": 1, "action": "Add SKU-TEST-001 to the cart and open checkout" },
+        { "n": 2, "action": "Leave the email empty and press Continue", "expected": "Inline error 'Email is required'" }
+      ],
+      "expected": "Payment form stays locked until an email is entered."
+    },
+    {
+      "id": "TC-2",
+      "title": "Manager sees the same rule",
+      "group": "mx-manager",
+      "variants": { "country": "MX", "role": "manager" },
+      "steps": [{ "n": 1, "action": "Repeat TC-1 as a manager", "expected": "Same inline error" }],
+      "expected": "The rule does not depend on role.",
+      "referenceCheck": "always"
+    }
+  ]
+}

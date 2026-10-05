@@ -15,7 +15,8 @@ plan.json ──init──▶ brief.md per case ──Test Agent (browser)──
   recordings and leaked credentials before anyone trusts a verdict.
 - **Dashboard.** The viewer opens on how your agents are doing: pass rate, failures, blocked
   cases, average agent time per case (excluding time waiting on you), reviewer agreement and
-  questions asked, with outcomes by run and by variant, cases that need attention, the slowest
+  questions asked, plus cost per run (API list-price equivalent, exact from agent
+  transcripts), with outcomes by run and by variant, cases that need attention, the slowest
   cases, and your recent runs. Filter by date range and plan.
 - **Local viewer.** Live progress, screenshots with non-destructive marks (arrows, boxes,
   spotlight, blur), recordings, a per-case agent chat, and Approve / Needs retest / Reject.

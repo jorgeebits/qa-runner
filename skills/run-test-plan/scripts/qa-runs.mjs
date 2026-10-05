@@ -18,6 +18,8 @@
 //   answer <runId> <tcId> <qid> <value> [--sensitive] [--remember project|user]
 //   questions [runId]         Open questions, for answering from the terminal.
 //   memory <list|show|recall|add|used|approve|stale|reject|prune> …   (memory --help)
+//   usage <runId> --group G (--transcript <agent output file> | --tokens N [--model sonnet])
+//         [--tool-uses N] [--ms N]   Record what a Test Agent group cost; no source = summary.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -38,6 +40,8 @@ import {
   updateMemory,
 } from './memory.mjs';
 import { answerQuestion, askQuestion, openQuestions, readQuestions, waitForAnswer } from './questions.mjs';
+import { PRICING_AS_OF } from './pricing.mjs';
+import { recordUsage, runCost } from './usage.mjs';
 import {
   CONFIG,
   PORT,
@@ -73,20 +77,6 @@ const fail = (message) => {
   console.error(`ERROR ${message}`);
   process.exit(1);
 };
-
-const commands = { init, open, serve, mark, validate, status, latest, annotate, ask, answer, questions, memory };
-if (!commands[command]) {
-  console.log(
-    readFileSync(new URL(import.meta.url), 'utf8')
-      .split('\n')
-      .slice(1)
-      .filter((line, i, lines) => lines.slice(0, i + 1).every((l) => l.startsWith('//')))
-      .join('\n')
-      .replace(/^\/\/ ?/gm, ''),
-  );
-  process.exit(command ? 1 : 0);
-}
-await commands[command]();
 
 async function init() {
   const planFile = args[0] && resolve(args[0]);
@@ -647,6 +637,45 @@ function questions() {
     console.log(`${q.tcId} ${q.id}  ${q.field}${q.context ? ` — ${q.context}` : ''}${q.screenshot ? ` [${q.screenshot}]` : ''}`);
 }
 
+const usd = (value) => (value === null || value === undefined ? 'n/a' : `$${value.toFixed(value < 1 ? 3 : 2)}`);
+
+function usage() {
+  const runId = args[0];
+  if (!runId || !existsSync(runDir(runId))) fail('usage needs a run id.');
+  const run = loadRun(runId);
+  if (flags.transcript || flags.tokens) {
+    const group = flags.group || null;
+    const cases = flags.cases
+      ? String(flags.cases).split(',')
+      : group
+        ? run.testCases.filter((tc) => (tc.group || tc.id) === group).map((tc) => tc.id)
+        : [];
+    if (group && !cases.length) fail(`no test case belongs to group "${group}"`);
+    try {
+      for (const e of recordUsage(runId, {
+        group,
+        cases,
+        transcript: flags.transcript ? resolve(String(flags.transcript)) : null,
+        tokens: flags.tokens,
+        model: flags.model,
+        toolUses: flags['tool-uses'] ? Number(flags['tool-uses']) : null,
+        durationMs: flags.ms ? Number(flags.ms) : null,
+      }))
+        console.log(
+          `OK ${group || 'run'} ${e.model} ${(e.totalTokens ?? e.reportedTokens).toLocaleString('en-US')} tokens${e.totalTokens ? '' : ' (reported)'} ${usd(e.costUsd)}${e.estimated ? ` (estimated: ${e.rateSource || 'unknown price'})` : ''} [${e.source}]`,
+        );
+    } catch (error) {
+      fail(error.message);
+    }
+    return;
+  }
+  const cost = runCost(runId, run.testCases);
+  console.log(`${runId}  total ${usd(cost.totalUsd)}${cost.estimated ? ' (partly estimated)' : ''}  agents ${usd(cost.agentsUsd)}  chat ${usd(cost.chatUsd)} (${cost.chatTurns} turns)  list prices as of ${PRICING_AS_OF}`);
+  for (const e of cost.entries)
+    console.log(`  ${String(e.group || '-').padEnd(10)} ${e.model.padEnd(18)} ${String(e.totalTokens ?? `${e.reportedTokens} rep.`).padStart(14)} tokens  ${usd(e.costUsd)}${e.estimated ? ' est.' : ''}`);
+  if (cost.missingGroups.length) console.log(`  ! no usage recorded for group(s): ${cost.missingGroups.join(', ')}`);
+}
+
 function memoryHelp() {
   return `memory list [--all]                 active memories (--all adds proposed, stale, expired)
 memory show <id>                    one memory in full
@@ -766,3 +795,18 @@ function latest() {
   if (!run) fail('no runs yet.');
   console.log(run.id);
 }
+
+// Dispatch last, so every function and constant above is initialized before a command runs.
+const commands = { init, open, serve, mark, validate, status, latest, annotate, ask, answer, questions, memory, usage };
+if (!commands[command]) {
+  console.log(
+    readFileSync(new URL(import.meta.url), 'utf8')
+      .split('\n')
+      .slice(1)
+      .filter((line, i, lines) => lines.slice(0, i + 1).every((l) => l.startsWith('//')))
+      .join('\n')
+      .replace(/^\/\/ ?/gm, ''),
+  );
+  process.exit(command ? 1 : 0);
+}
+await commands[command]();

@@ -1473,7 +1473,7 @@ a.brand {
 }
 .kpis {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -1793,15 +1793,28 @@ a.brand {
   }
 }
 
+.kpi-hero {
+  grid-row: span 2;
+}
 @media (min-width: 1240px) {
   .kpis {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  .kpi-hero {
+    grid-row: auto;
   }
 }
 @media (max-width: 640px) {
   .kpis {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .kpi-hero {
+    grid-row: auto;
+    grid-column: span 2;
+  }
+}
+.dash-chart .mark.estimated {
+  fill-opacity: 0.55;
 }
 .dash-table .nowrap,
 .dash-table td.nowrap {

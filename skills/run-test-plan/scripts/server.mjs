@@ -11,6 +11,8 @@ import { imageSize, readAnnotations, writeAnnotations } from './annotations.mjs'
 import { chatState, resetChat, sendChat, stopChat } from './chat.mjs';
 import { addMemory, findMemory, loadMemories, removeMemory, updateMemory } from './memory.mjs';
 import { answerQuestion } from './questions.mjs';
+import { PRICING_AS_OF } from './pricing.mjs';
+import { runCost } from './usage.mjs';
 import {
   PORT,
   RUNS_DIR,
@@ -132,7 +134,11 @@ const route = async (req, res) => {
     if (resource === 'dashboard' && req.method === 'GET') {
       const memories = loadMemories({ all: true });
       return send(res, 200, {
-        runs: dashboardData(),
+        runs: dashboardData().map((run) => {
+          const { entries, ...cost } = runCost(run.id, run.cases);
+          return { ...run, cost };
+        }),
+        pricingAsOf: PRICING_AS_OF,
         config: viewerConfig(),
         memory: {
           active: memories.filter((m) => m.status === 'active').length,
@@ -147,7 +153,8 @@ const route = async (req, res) => {
     if (resource === 'runs' && req.method === 'GET') {
       if (!existsSync(runDir(runId))) return send(res, 404, { error: 'unknown run' });
       const run = loadRun(runId);
-      return send(res, 200, { ...run, counts: countStatuses(run) });
+      const { entries, ...cost } = runCost(runId, run.testCases);
+      return send(res, 200, { ...run, counts: countStatuses(run), cost });
     }
     if (resource === 'runs' && tcId === 'review' && req.method === 'PUT') return saveReview(req, res, runId, action);
     if (resource === 'rec' && req.method === 'POST') return recording(req, res, runId, tcId, action);

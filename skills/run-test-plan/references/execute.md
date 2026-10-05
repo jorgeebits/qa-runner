@@ -4,6 +4,11 @@
   per group. Its prompt lists only brief paths, credentials, and the tool.
 - Run groups **one at a time**. The Playwright MCP drives one shared browser, so parallel agents
   steal each other's tabs. Launch the next group when the previous one notifies.
+- **Record cost as soon as each agent notifies**, before anything else, because the harness may
+  clear its transcript later:
+  `$Q usage <runId> --group <group> --transcript <the agent's output_file> --tokens <subagent_tokens> --tool-uses <n> --ms <duration_ms>`.
+  The transcript gives the exact cost. The notice's numbers calibrate future estimates and are
+  the fallback when the transcript is empty. Never Read the transcript into this session.
 - Each agent replies with one line per case. Don't read its transcript, the evidence, or the
   result files into this session; run `$Q status <runId>` instead.
 - If `init` printed `secret needed: env:NAME`, put that variable's value in the prompt next to

@@ -106,6 +106,30 @@
           "description": "Ask Test Agents to blur names, IDs, phones and addresses in screenshots. Turn on only for environments that show real customer data."
         }
       }
+    },
+    "pricing": {
+      "type": "object",
+      "description": "Per-model overrides of the list prices in scripts/pricing.mjs, in USD per million tokens.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "input": {
+            "type": "number"
+          },
+          "output": {
+            "type": "number"
+          },
+          "cacheRead": {
+            "type": "number"
+          },
+          "cacheWrite5m": {
+            "type": "number"
+          },
+          "cacheWrite1h": {
+            "type": "number"
+          }
+        }
+      }
     }
   }
 }

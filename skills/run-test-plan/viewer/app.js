@@ -1,6 +1,6 @@
 import { annotatedUrl, openEditor } from './annotate.js';
 import { createChat } from './chat.js';
-import { createDashboard } from './dashboard.js';
+import { createDashboard, fmtUsd } from './dashboard.js';
 
 const STATUSES = ['pass', 'fail', 'blocked', 'skipped', 'running', 'pending'];
 const REVIEWS = [
@@ -297,6 +297,8 @@ function renderHeader() {
     meta.createdAt && esc(fmtDate(meta.createdAt)),
     meta.recordAll && 'recording on',
     meta.retestOf && `retest of <span class="mono">${esc(meta.retestOf)}</span>`,
+    state.run.cost?.totalUsd != null &&
+      `<span title="API list-price equivalent${state.run.cost.estimated ? ', partly estimated' : ''}">${state.run.cost.estimated ? '≈ ' : ''}${esc(fmtUsd(state.run.cost.totalUsd))}</span>`,
   ].filter(Boolean);
   const stat = (key, label, value) =>
     `<div class="stat s-${key}"><b>${value}</b><span>${key === 'reviewed' ? icon('approved') : icon(key)}${label}</span></div>`;

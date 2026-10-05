@@ -26,10 +26,14 @@
   (validated for color-vision deficiency). Identity always also rides on icons, labels and a
   table view.
 
+- **Cost per run (0.4.0).** `qa-runs usage` prices each Test Agent group from its transcript's
+  per-message usage (exact, at list prices in `scripts/pricing.mjs`). The completion notice's
+  token count is not a billing quantity, so when a transcript is gone it is priced by
+  calibration against groups that have both numbers, or left unknown. Chat turns add their own
+  reported cost.
+
 Candidate metrics that need data the runner does not record yet:
 
-- **Cost per run.** Tokens and dollars per agent group. The orchestrator gets this in each
-  agent's completion notice; a `usage` command could store it.
 - **First-pass yield.** The share of cases that pass without a retest, which needs retest
   chains followed across runs.
 - **Defect yield.** Real bugs filed per run, which needs the filed issue keys.

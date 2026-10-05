@@ -29,7 +29,8 @@ Read each step's reference **when you reach that step**, not before.
    `$Q open <runId>`. Open the viewer before launching agents: recording streams to it, and
    agents ask the human through it. `init` adds relevant memories to each brief and lists any
    `secret needed: env:NAME` you must pass in the agent prompt.
-3. **Execute** → `references/execute.md`. One Test Agent per group, **one group at a time**.
+3. **Execute** → `references/execute.md`. One Test Agent per group, **one group at a time**;
+   record each group's cost with `$Q usage` the moment it finishes.
    Never read agent transcripts, evidence or results here; use `$Q status <runId>`.
 4. **Validate** → `$Q validate <runId>`. Fix credential leaks yourself; send other warnings back
    to the agent or flag them to the reviewer. Never edit a result to look better.

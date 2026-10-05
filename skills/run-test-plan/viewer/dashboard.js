@@ -40,6 +40,8 @@ const median = (values) => {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 const pct = (value) => (value === null ? '—' : `${Math.round(value * 100)}%`);
+export const fmtUsd = (value) =>
+  value === null || value === undefined ? '—' : `$${value < 10 ? value.toFixed(2) : Math.round(value).toLocaleString()}`;
 export function fmtDuration(ms) {
   if (ms === null || ms === undefined) return '—';
   const s = Math.round(ms / 1000);
@@ -148,7 +150,15 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
     const timed = executed.map((c) => c.agentMs).filter((v) => v !== null);
     const reviewed = cases.filter((c) => c.review);
     const waits = cases.filter((c) => c.questions).map((c) => c.waitMs || 0);
+    const costed = runs.filter((run) => run.cost?.totalUsd !== null && run.cost?.totalUsd !== undefined);
+    const costUsd = costed.length ? costed.reduce((sum, run) => sum + run.cost.totalUsd, 0) : null;
+    const costedCases = costed.flatMap((run) => run.cases).filter((c) => EXECUTED.has(c.status)).length;
     return {
+      costUsd,
+      costPerRun: costed.length ? costUsd / costed.length : null,
+      costPerCase: costedCases ? costUsd / costedCases : null,
+      costedRuns: costed.length,
+      costEstimated: costed.some((run) => run.cost.estimated),
       cases,
       executed: executed.length,
       pass: count('pass'),
@@ -182,6 +192,8 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
         ? `${up ? '▲' : '▼'} ${Math.abs(Math.round(diff * 100))} pts`
         : kind === 'ms'
           ? `${up ? '▲' : '▼'} ${fmtDuration(Math.abs(diff))}`
+          : kind === 'usd'
+            ? `${up ? '▲' : '▼'} ${fmtUsd(Math.abs(diff))}`
           : `${up ? '▲' : '▼'} ${Math.abs(diff)}`;
     return { text: `${text} vs previous ${RANGES.find((r) => r.key === state.range).label}`, tone: up === upIsGood ? 'good' : 'bad' };
   }
@@ -341,6 +353,72 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
       'Average per run, excluding time spent waiting for your answers.',
       svg,
       dataTable(['Run', 'Average', 'Median', 'Cases timed'], shown.map((r) => [r.run.label || r.run.id, fmtDuration(r.avg), fmtDuration(r.median), String(r.n)])),
+    );
+  }
+
+  function costByRun(runs) {
+    const shown = [...runs]
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .filter((run) => run.cost?.totalUsd !== null && run.cost?.totalUsd !== undefined)
+      .slice(-MAX_RUN_COLUMNS);
+    if (!shown.length)
+      return card(
+        'Cost per run',
+        'No usage recorded in range yet.',
+        el('p', { class: 'dash-empty', text: 'Record each agent group with qa-runs.mjs usage right after it finishes.' }),
+      );
+    const W = 420;
+    const H = 220;
+    const pad = { top: 18, right: 8, bottom: 28, left: 52 };
+    const plotW = W - pad.left - pad.right;
+    const plotH = H - pad.top - pad.bottom;
+    const max = niceMax(Math.max(...shown.map((r) => r.cost.totalUsd)));
+    const band = plotW / shown.length;
+    const barW = Math.min(24, band * 0.6);
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'dash-chart', role: 'img', 'aria-label': 'Cost per run' });
+    for (let i = 0; i <= 4; i += 1) {
+      const value = (max / 4) * i;
+      const y = pad.top + plotH - (value / max) * plotH;
+      svg.append(
+        svgEl('line', { x1: pad.left, x2: W - pad.right, y1: y, y2: y, class: i ? 'grid' : 'baseline' }),
+        svgEl('text', { x: pad.left - 8, y: y + 4, class: 'tick', 'text-anchor': 'end', text: fmtUsd(value) }),
+      );
+    }
+    let lastDay = '';
+    shown.forEach((run, i) => {
+      const cx = pad.left + band * i + band / 2;
+      const h = (run.cost.totalUsd / max) * plotH;
+      svg.append(svgEl('path', { d: columnPath(cx - barW / 2, pad.top + plotH - h, barW, h, true), class: `mark k-series${run.cost.estimated ? ' estimated' : ''}` }));
+      if (i === shown.length - 1)
+        svg.append(svgEl('text', { x: cx, y: pad.top + plotH - h - 6, class: 'value-label', 'text-anchor': 'middle', text: fmtUsd(run.cost.totalUsd) }));
+      const day = fmtDay(run.createdAt);
+      if (day !== lastDay) svg.append(svgEl('text', { x: cx, y: H - 8, class: 'tick', 'text-anchor': 'middle', text: day }));
+      lastDay = day;
+      const executed = run.cases.filter((c) => EXECUTED.has(c.status)).length;
+      svg.append(
+        hoverable(
+          svgEl('rect', { x: cx - band / 2, y: pad.top, width: band, height: plotH, class: 'hit' }),
+          [
+            ['series', fmtUsd(run.cost.totalUsd), run.cost.estimated ? 'total (partly estimated)' : 'total'],
+            ...(run.cost.agentsUsd !== null ? [[null, fmtUsd(run.cost.agentsUsd), 'Test Agents']] : []),
+            ...(run.cost.chatUsd !== null ? [[null, fmtUsd(run.cost.chatUsd), `chat (${run.cost.chatTurns} turn${run.cost.chatTurns > 1 ? 's' : ''})`]] : []),
+            ...(executed ? [[null, fmtUsd(run.cost.totalUsd / executed), 'per executed case']] : []),
+            ...(run.cost.missingGroups?.length ? [[null, String(run.cost.missingGroups.length), 'group(s) without usage']] : []),
+          ],
+          `${run.label || run.title} · ${fmtStamp(run.createdAt)}`,
+          () => onOpenRun(run.id),
+        ),
+      );
+    });
+    const anyEstimated = shown.some((r) => r.cost.estimated);
+    return card(
+      'Cost per run',
+      `API list-price equivalent (prices as of ${state.data.pricingAsOf}).${anyEstimated ? ' Lighter columns are partly estimated.' : ''}`,
+      svg,
+      dataTable(
+        ['Run', 'Total', 'Test Agents', 'Chat', 'Estimated'],
+        shown.map((r) => [r.label || r.id, fmtUsd(r.cost.totalUsd), fmtUsd(r.cost.agentsUsd), fmtUsd(r.cost.chatUsd), r.cost.estimated ? 'yes' : 'no']),
+      ),
     );
   }
 
@@ -511,6 +589,7 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
         ),
         el('td', { class: 'num', text: pct(m.passRate) }),
         el('td', { class: 'num', text: fmtDuration(m.avgMs) }),
+        el('td', { class: 'num nowrap', text: run.cost?.totalUsd !== null && run.cost?.totalUsd !== undefined ? `${run.cost.estimated ? '≈ ' : ''}${fmtUsd(run.cost.totalUsd)}` : '—' }),
         el('td', { class: 'num', text: `${reviewed}/${run.cases.length}` }),
       );
     });
@@ -522,7 +601,7 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
         ? el(
             'table',
             { class: 'dash-table runs' },
-            el('thead', {}, el('tr', {}, ['Run', 'Started', 'Outcome', 'Pass rate', 'Avg per case', 'Reviewed'].map((h) => el('th', { scope: 'col', text: h })))),
+            el('thead', {}, el('tr', {}, ['Run', 'Started', 'Outcome', 'Pass rate', 'Avg per case', 'Cost', 'Reviewed'].map((h) => el('th', { scope: 'col', text: h })))),
             el('tbody', {}, rows),
           )
         : el('p', { class: 'dash-empty', text: 'No runs in this range.' }),
@@ -592,11 +671,20 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
         iconName: 'blocked',
       }),
       tile({
-        label: 'Avg agent time per case',
+        label: 'Time per case',
         value: fmtDuration(now.avgMs),
         sub: now.timed ? `median ${fmtDuration(now.medianMs)} · ${now.timed} timed${now.estimated ? ' · some estimated' : ''}` : 'No timed cases yet',
         delta: delta(now.avgMs, before.avgMs, { kind: 'ms', upIsGood: false }),
         iconName: 'running',
+      }),
+      tile({
+        label: 'Cost',
+        value: now.costUsd === null ? '—' : `${now.costEstimated ? '≈ ' : ''}${fmtUsd(now.costUsd)}`,
+        sub: now.costedRuns
+          ? `${fmtUsd(now.costPerRun)} per run · ${fmtUsd(now.costPerCase)} per case${now.costedRuns < runs.length ? ` · ${runs.length - now.costedRuns} run${runs.length - now.costedRuns > 1 ? 's' : ''} without usage` : ''}`
+          : 'No usage recorded yet',
+        delta: delta(now.costUsd, before.costUsd, { kind: 'usd', upIsGood: false }),
+        iconName: 'cost',
       }),
       tile({
         label: 'Reviewer agreement',
@@ -611,7 +699,7 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
         iconName: 'question',
       }),
     );
-    const grid = el('div', { class: 'dash-grid' }, outcomesByRun(runs), timeByRun(runs), outcomesByVariant(now.cases), attentionTable(now.cases), slowestTable(now.cases));
+    const grid = el('div', { class: 'dash-grid' }, outcomesByRun(runs), timeByRun(runs), costByRun(runs), outcomesByVariant(now.cases), attentionTable(now.cases), slowestTable(now.cases));
     host.replaceChildren(
       el('div', { class: 'dash-head' }, el('div', {}, el('h1', { text: 'Test agents' }), el('p', { class: 'dash-muted', text: `${runs.length} run${runs.length === 1 ? '' : 's'} · ${now.cases.length} cases · ${rangeLabel}` })), filters()),
       runs.length ? kpis : null,

@@ -1,6 +1,6 @@
 {
   "name": "qa-runner",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Run manual-style E2E test plans with browser agents, review the evidence in a local viewer, and retest what a human rejects.",
   "author": { "name": "jorge.lopezg" },
   "license": "MIT",

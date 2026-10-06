@@ -438,7 +438,7 @@ function annotate() {
 }
 
 function cell(text) {
-  return String(text).replace(/\|/g, '\\|').replace(/\n/g, ' ');
+  return String(text).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
 // Recording runs inside the Playwright MCP process, which has no file system access, so frames

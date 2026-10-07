@@ -155,6 +155,7 @@ export function loadRun(runId) {
   const plan = normalizePlan(readJson(join(dir, 'plan.json'), {}));
   const meta = readJson(join(dir, 'meta.json'), {});
   const review = readJson(join(dir, 'review.json'), {});
+  const executed = executedBy(readJson(join(dir, 'schedule.json'), null));
   const testCases = (plan.testCases || []).map((tc) => {
     const base = join(dir, 'tc', tc.id);
     const result = normalizeResult(readJson(join(base, 'result.json')));
@@ -187,6 +188,7 @@ export function loadRun(runId) {
       files,
       annotations,
       review: review[tc.id] || null,
+      executedBy: executed[tc.id] || null,
       warnings: [
         ...checkContract(tc, result, files, meta, evidenceDir, plan),
         ...(result?.blockedReason === 'needs-input' && !questions.length
@@ -196,6 +198,22 @@ export function loadRun(runId) {
     };
   });
   return { id: runId, plan, meta, testCases, config: viewerConfig() };
+}
+
+// Which model produced each verdict, from the run's schedule.json (written by init, kept by the
+// scheduler, never by an agent), and whether the verdict comes from an escalated re-run.
+function executedBy(schedule) {
+  const by = {};
+  for (const batch of schedule?.batches || [])
+    for (const id of batch.cases)
+      if (batch.state !== 'pending')
+        by[id] = {
+          model: batch.model,
+          effort: batch.effort,
+          tier: batch.tier,
+          ...(batch.escalatedFrom && { escalatedFrom: batch.escalatedFrom.model, reason: batch.escalatedFrom.reasons?.[id] }),
+        };
+  return by;
 }
 
 // What the viewer needs from the project config to label things; nothing else leaves the server.
@@ -261,6 +279,9 @@ export function dashboardData() {
         title: tc.title,
         group: tc.group || null,
         status: tc.status,
+        model: tc.executedBy?.model || null,
+        tier: tc.executedBy?.tier || null,
+        escalated: Boolean(tc.executedBy?.escalatedFrom),
         variants: tc.variants || {},
         agentMs: tc.timing?.agentMs ?? null,
         waitMs: tc.timing?.waitMs ?? null,

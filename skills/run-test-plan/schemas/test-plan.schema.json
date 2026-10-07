@@ -80,6 +80,9 @@
             "never"
           ],
           "default": "on-deviation"
+        },
+        "agent": {
+          "$ref": "#/$defs/agent"
         }
       }
     },
@@ -141,7 +144,8 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "Free labels. Routing reads readonly, read-only, writes and serial."
         },
         "preconditions": {
           "type": "array",
@@ -209,8 +213,42 @@
         },
         "notes": {
           "type": "string"
+        },
+        "agent": {
+          "$ref": "#/$defs/agent"
         }
       }
+    },
+    "agent": {
+      "type": "object",
+      "description": "Overrides the model routing that init derives from the case (see references/execute.md).",
+      "properties": {
+        "complexity": {
+          "enum": [
+            "simple",
+            "standard",
+            "complex"
+          ]
+        },
+        "model": {
+          "type": "string",
+          "examples": [
+            "haiku",
+            "sonnet",
+            "opus"
+          ]
+        },
+        "effort": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ]
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

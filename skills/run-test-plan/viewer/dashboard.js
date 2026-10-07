@@ -422,6 +422,85 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
     );
   }
 
+  // Every turn re-reads the agent's whole context, so the tool results that fill it are what a
+  // run pays for again and again. Shares are of result characters across agents in range.
+  function contextByTool(runs, cases) {
+    const profiles = runs.map((run) => run.cost?.profile).filter(Boolean);
+    const tools = {};
+    let agents = 0;
+    let firstSum = 0;
+    let peak = 0;
+    let snapshots = 0;
+    let imageReads = 0;
+    for (const p of profiles) {
+      agents += p.agents || 1;
+      firstSum += p.firstContextSum ?? p.firstContext ?? 0;
+      peak = Math.max(peak, p.peakContext || 0);
+      snapshots += p.snapshots || 0;
+      imageReads += p.imageReads || 0;
+      for (const [name, t] of Object.entries(p.tools || {})) {
+        const into = (tools[name] ||= { calls: 0, chars: 0 });
+        into.calls += t.calls || 0;
+        into.chars += t.resultChars || 0;
+      }
+    }
+    const models = {};
+    for (const c of cases.filter((c) => c.model)) models[c.model] = (models[c.model] || 0) + 1;
+    const escalated = cases.filter((c) => c.escalated).length;
+    const mix = Object.entries(models)
+      .map(([m, n]) => `${m} ${n}`)
+      .join(' · ');
+    const modelLine = mix ? `Cases by model: ${mix}${escalated ? ` · ${escalated} re-run on a stronger model` : ''}.` : '';
+    const rows = Object.entries(tools)
+      .sort((a, b) => b[1].chars - a[1].chars)
+      .slice(0, 8);
+    const total = Object.values(tools).reduce((sum, t) => sum + t.chars, 0);
+    if (!rows.length || !total)
+      return card(
+        'Where agent context goes',
+        modelLine || 'No transcript profiles in range yet.',
+        el('p', { class: 'dash-empty', text: 'Record batches with qa-runs.mjs usage --transcript to see which tool results fill the agents’ context.' }),
+      );
+    const k = (n) => `${Math.round(n / 1000)}K`;
+    const W = 420;
+    const rowH = 24;
+    const pad = { top: 6, right: 70, left: 150 };
+    const H = pad.top + rows.length * rowH + 6;
+    const plotW = W - pad.left - pad.right;
+    const max = rows[0][1].chars;
+    const svg = svgEl('svg', { viewBox: `0 0 ${W} ${H}`, class: 'dash-chart', role: 'img', 'aria-label': 'Share of agent context by tool' });
+    rows.forEach(([name, t], i) => {
+      const y = pad.top + i * rowH;
+      const w = Math.max(2, (t.chars / max) * plotW);
+      const share = t.chars / total;
+      svg.append(
+        svgEl('text', { x: pad.left - 8, y: y + rowH / 2 + 4, class: 'tick', 'text-anchor': 'end', text: name.replace(/^browser_/, '') }),
+        svgEl('path', { d: barPath(pad.left, y + 5, w, rowH - 10, true), class: 'mark k-series' }),
+        svgEl('text', { x: pad.left + w + 6, y: y + rowH / 2 + 4, class: 'value-label', text: pct(share) }),
+        hoverable(
+          svgEl('rect', { x: 0, y, width: W, height: rowH, class: 'hit' }),
+          [
+            ['series', pct(share), 'of tool-result context'],
+            [null, String(t.calls), 'calls'],
+            [null, k(t.chars / 4), 'tokens, approx.'],
+          ],
+          name,
+        ),
+      );
+    });
+    return card(
+      'Where agent context goes',
+      `${agents} agent${agents === 1 ? '' : 's'} · starting context ${k(firstSum / agents)} on average, peak ${k(peak)} · ${snapshots} full snapshots · ${imageReads} screenshots read back. ${modelLine}`,
+      svg,
+      dataTable(
+        ['Tool', 'Calls', 'Result chars', 'Share'],
+        Object.entries(tools)
+          .sort((a, b) => b[1].chars - a[1].chars)
+          .map(([name, t]) => [name, String(t.calls), t.chars.toLocaleString(), pct(t.chars / total)]),
+      ),
+    );
+  }
+
   function outcomesByVariant(cases) {
     const keys = [...new Set(cases.flatMap((c) => Object.keys(c.variants)))];
     if (!keys.length) return null;
@@ -699,7 +778,7 @@ export function createDashboard({ host, api, icon, onOpenRun, onOpenCase }) {
         iconName: 'question',
       }),
     );
-    const grid = el('div', { class: 'dash-grid' }, outcomesByRun(runs), timeByRun(runs), costByRun(runs), outcomesByVariant(now.cases), attentionTable(now.cases), slowestTable(now.cases));
+    const grid = el('div', { class: 'dash-grid' }, outcomesByRun(runs), timeByRun(runs), costByRun(runs), contextByTool(runs, now.cases), outcomesByVariant(now.cases), attentionTable(now.cases), slowestTable(now.cases));
     host.replaceChildren(
       el('div', { class: 'dash-head' }, el('div', {}, el('h1', { text: 'Test agents' }), el('p', { class: 'dash-muted', text: `${runs.length} run${runs.length === 1 ? '' : 's'} · ${now.cases.length} cases · ${rangeLabel}` })), filters()),
       runs.length ? kpis : null,

@@ -10,6 +10,8 @@ import { PROJECT_ROOT, SKILL_DIR, displayPath, readJson, runDir, tcDir, writeJso
 
 const CLAUDE_BIN = process.env.QA_CLAUDE_BIN || 'claude';
 const MODEL = process.env.QA_CHAT_MODEL || 'sonnet';
+// Questions about one case's evidence and a few screenshot marks: short turns that don't repay deep thinking.
+const EFFORT = process.env.QA_CHAT_EFFORT || 'low';
 const MAX_MESSAGE = 4000;
 const live = new Map();
 
@@ -84,6 +86,8 @@ export function sendChat(runId, tcId, { message, image }) {
     '--include-partial-messages',
     '--model',
     MODEL,
+    '--effort',
+    EFFORT,
     '--tools',
     'Read,Glob,Grep,Bash',
     '--allowedTools',

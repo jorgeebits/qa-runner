@@ -130,6 +130,136 @@
           }
         }
       }
+    },
+    "execution": {
+      "type": "object",
+      "description": "How Test Agents are scheduled: parallel browsers, accounts, batch size and model routing.",
+      "properties": {
+        "maxParallel": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3,
+          "default": 3,
+          "description": "Batches running at once, each in its own browser of the plugin's pool."
+        },
+        "sessions": {
+          "enum": [
+            "exclusive",
+            "shared"
+          ],
+          "default": "exclusive",
+          "description": "exclusive: a login ends the user's other sessions, so each running batch needs its own account. shared: one user may be logged in from several browsers."
+        },
+        "accounts": {
+          "type": "array",
+          "description": "Logins Test Agents may use. Without it, the plan's environment.user is the only one.",
+          "items": {
+            "type": "object",
+            "required": [
+              "user"
+            ],
+            "properties": {
+              "user": {
+                "type": "string"
+              },
+              "secret": {
+                "type": "string",
+                "pattern": "^env:[A-Za-z_][A-Za-z0-9_]*$",
+                "description": "Where the password is, as env:NAME. Never the password itself."
+              },
+              "variants": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Only batches with these variant values may use this account (a store-bound user, say)."
+              }
+            }
+          }
+        },
+        "maxCasesPerAgent": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3,
+          "description": "Longer groups are split into batches run in order by fresh agents, because every turn re-reads the agent's whole context."
+        },
+        "tiers": {
+          "type": "object",
+          "description": "Model and effort per tier; see references/execute.md.",
+          "properties": {
+            "simple": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "effort": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ]
+                }
+              }
+            },
+            "standard": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "effort": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ]
+                }
+              }
+            },
+            "complex": {
+              "type": "object",
+              "properties": {
+                "model": {
+                  "type": "string"
+                },
+                "effort": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "simple": {
+              "model": "haiku",
+              "effort": "medium"
+            },
+            "standard": {
+              "model": "sonnet",
+              "effort": "medium"
+            },
+            "complex": {
+              "model": "sonnet",
+              "effort": "high"
+            }
+          }
+        },
+        "escalate": {
+          "type": "boolean",
+          "default": true,
+          "description": "Re-run once on the standard tier any case a haiku batch reports as fail, blocked, unfinished or with contract warnings."
+        }
+      }
     }
   }
 }

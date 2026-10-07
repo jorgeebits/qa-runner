@@ -1,0 +1,30 @@
+# Mirrors skills/run-test-plan into ezcorp-appdev/ezcorp.skills-repo on every push to main.
+# Needs the repo secret EZCORP_SKILLS_TOKEN: a token that can push branches and open PRs there.
+name: Sync skill to EZCORP skills repo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'skills/run-test-plan/**'
+      - '.claude-plugin/plugin.json'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-ezcorp
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 50
+      - run: node scripts/build-agents.mjs --check
+      - run: bash scripts/sync-ezcorp.sh
+        env:
+          GH_TOKEN: ${{ secrets.EZCORP_SKILLS_TOKEN }}

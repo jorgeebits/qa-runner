@@ -1,8 +1,39 @@
 {
   "name": "qa-runner",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Run manual-style E2E test plans with browser agents, review the evidence in a local viewer, and retest what a human rejects.",
-  "author": { "name": "jorge.lopezg" },
+  "author": {
+    "name": "jorge.lopezg"
+  },
   "license": "MIT",
-  "keywords": ["qa", "e2e", "testing", "playwright", "test-plan"]
+  "keywords": [
+    "qa",
+    "e2e",
+    "testing",
+    "playwright",
+    "test-plan"
+  ],
+  "mcpServers": {
+    "qa-browser-1": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/skills/run-test-plan/scripts/browser-mcp.mjs",
+        "1"
+      ]
+    },
+    "qa-browser-2": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/skills/run-test-plan/scripts/browser-mcp.mjs",
+        "2"
+      ]
+    },
+    "qa-browser-3": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/skills/run-test-plan/scripts/browser-mcp.mjs",
+        "3"
+      ]
+    }
+  }
 }

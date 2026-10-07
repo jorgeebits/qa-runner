@@ -2,7 +2,8 @@
 // run-test-plan CLI. One entry point for the orchestrator and the Test Agents:
 //
 //   init <plan.json> [--label txt] [--record] [--only TC-1,TC-2] [--retest <runId>]
-//        Freeze the plan into a new run folder and write one brief per test case.
+//        Freeze the plan into a new run folder, write one brief per test case, and schedule
+//        batches (tier, model, effort) in schedule.json.
 //   open [runId]              Start the viewer server if needed and open it in the browser.
 //   serve                     Run the viewer server in the foreground.
 //   mark <runId> <tcId> <running|pending> [note]
@@ -18,10 +19,17 @@
 //   answer <runId> <tcId> <qid> <value> [--sensitive] [--remember project|user]
 //   questions [runId]         Open questions, for answering from the terminal.
 //   memory <list|show|recall|add|used|approve|stale|reject|prune> …   (memory --help)
-//   usage <runId> --group G (--transcript <agent output file> | --tokens N [--model sonnet])
-//         [--tool-uses N] [--ms N]   Record what a Test Agent group cost; no source = summary.
+//   next <runId> [--release <batch>] [--fallback]
+//                             The batches to launch now (agent, model, effort, prompt), after
+//                             escalating cheap-model verdicts that need a second look.
+//   usage <runId> --batch B (--transcript <agent output file> | --tokens N [--model sonnet])
+//         [--tool-uses N] [--ms N]   (--group G instead of --batch for runs without a schedule)
+//                             Record what a batch cost and mark it done; no source = summary
+//                             (--profile: where the run's tokens went, by tool).
+//   profile <transcript.jsonl…>  Where agents' tokens went, by tool, from transcripts.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { imageSize, readAnnotations, removeAnnotations, writeAnnotations } from './annotations.mjs';
 import {
@@ -40,8 +48,9 @@ import {
   updateMemory,
 } from './memory.mjs';
 import { answerQuestion, askQuestion, openQuestions, readQuestions, waitForAnswer } from './questions.mjs';
-import { PRICING_AS_OF } from './pricing.mjs';
-import { recordUsage, runCost } from './usage.mjs';
+import { PRICING_AS_OF, costOf } from './pricing.mjs';
+import { buildSchedule, escalate, execution, finishBatch, nextLaunch, readSchedule, saveSchedule } from './schedule.mjs';
+import { mergeProfiles, parseTranscript, recordUsage, runCost } from './usage.mjs';
 import {
   CONFIG,
   PORT,
@@ -145,11 +154,22 @@ async function init() {
     );
   }
   const secrets = [...new Set(briefed.filter((e) => e.secretRef).map((e) => e.secretRef))];
+  const schedule = buildSchedule(frozen, selected, caseHistories(plan.id, runId));
+  saveSchedule(runId, schedule);
 
   console.log(`OK run=${runId}`);
   console.log(`dir=${repoPath(dir)}`);
   console.log(`viewer=http://127.0.0.1:${PORT}/#/run/${encodeURIComponent(runId)}`);
-  for (const [group, ids] of groupIds(selected)) console.log(`group ${group}: ${ids.join(', ')}`);
+  for (const b of schedule.batches)
+    console.log(
+      `batch ${b.id}: ${b.cases.join(', ')}  ${b.tier} → ${b.model}/${b.effort}  (${b.cases.map((id) => schedule.cases[id].reasons.join(', ')).join('; ')})`,
+    );
+  const ex = execution();
+  const logins = ex.accounts.length || new Set(schedule.batches.map((b) => b.user)).size;
+  const parallel = Math.min(schedule.maxParallel, schedule.batches.length, schedule.sessions === 'shared' ? Infinity : logins);
+  console.log(
+    `parallel: up to ${parallel} batch(es) at once (sessions ${schedule.sessions}, ${logins} login(s))${parallel === 1 && schedule.batches.length > 1 && schedule.sessions === 'exclusive' ? '; add execution.accounts in .qa/config.json to run in parallel' : ''}`,
+  );
   if (briefed.length) console.log(`memory: ${new Set(briefed.map((e) => e.id)).size} pointer(s) in briefs`);
   for (const ref of secrets)
     console.log(`secret needed: ${ref} (${process.env[ref.slice(4)] ? 'set' : 'NOT set'}); pass it in the agent prompt`);
@@ -182,13 +202,25 @@ function checkPlan(plan) {
   return problems;
 }
 
-function groupIds(testCases) {
-  const groups = new Map();
-  for (const tc of testCases) {
-    const key = tc.group || tc.id;
-    groups.set(key, [...(groups.get(key) || []), tc.id]);
+// Each case's earlier outcomes in the same plan, newest first; a rejection counts as a failure.
+function caseHistories(planId, exceptRunId) {
+  const histories = new Map();
+  for (const { id, planId: runPlan } of listRuns()) {
+    if (runPlan !== planId || id === exceptRunId) continue;
+    for (const tc of loadRun(id).testCases)
+      histories.set(tc.id, [...(histories.get(tc.id) || []), tc.review?.verdict === 'rejected' ? 'rejected' : tc.status]);
   }
-  return groups;
+  return histories;
+}
+
+// Capabilities are project skills. Test Agents get their file path, not a Skill tool whose
+// listing of every installed skill would ride along on every turn.
+function capabilityPath(skill) {
+  for (const dir of [join(PROJECT_ROOT, '.claude', 'skills'), join(homedir(), '.claude', 'skills')]) {
+    const file = join(dir, skill, 'SKILL.md');
+    if (existsSync(file)) return repoPath(file);
+  }
+  return null;
 }
 
 // The brief is the only input a Test Agent gets for one test case: what to do, where to write,
@@ -236,8 +268,11 @@ function brief(plan, tc, runId, record, { memories = [], carried = [] } = {}) {
     ...(Object.keys(CONFIG.capabilities || {}).length
       ? [
           '',
-          '## Project skills (invoke one only when a step needs it)',
-          ...Object.entries(CONFIG.capabilities).map(([use, skill]) => `- ${use}: \`${skill}\``),
+          '## Project procedures (read one only when a step needs it)',
+          ...Object.entries(CONFIG.capabilities).map(([use, skill]) => {
+            const path = capabilityPath(skill);
+            return `- ${use}: ${path ? `\`${path}\`` : `skill \`${skill}\` (no SKILL.md found; use \`$Q ask\` if a step needs it)`}`;
+          }),
         ]
       : []),
     ...(memories.length
@@ -269,49 +304,36 @@ function brief(plan, tc, runId, record, { memories = [], carried = [] } = {}) {
     ...(tc.notes ? ['', `**Notes:** ${tc.notes}`] : []),
     ...(plan.guardrails?.length ? ['', '## Guardrails', ...plan.guardrails.map((g) => `- ${g}`)] : []),
     '',
-    '## Protocol',
-    `1. Start: \`node ${cli} mark ${runId} ${tc.id} running\``,
-    `2. Evidence goes in \`${evidence}/\`, named \`NN-<step-slug>.<ext>\`. Save request/response bodies you rely on as \`.json\`. Screenshots, either way:`,
-    `   - **Annotated (preferred for the proof of each expected result, and for every fail/blocked):** open \`${repoPath(join(base, '.capture.js'))}\`, set \`file\` and \`marks\` (CSS or \`text=…\` selectors; types rect, ellipse, highlight, arrow, text, step, spotlight, blur; optional \`label\`, \`color\`), and run it with \`browser_run_code_unsafe\` (paste it as \`code\`, or save your edit and pass \`filename\`). It takes the screenshot and draws the marks on the element boxes. Keep marks few and meaningful: one arrow or box per point you prove.${CONFIG.evidence?.blurPersonalData ? ' Blur any personal data (names, IDs, phones, addresses): this project requires it.' : ' Do not blur: this is test data and reviewers need to read it.'}`,
-    `   - **Plain:** \`browser_take_screenshot\` with \`scale: "css"\` and \`filename: "${evidence}/01-<slug>.png"\`.`,
+    '## Paths',
+    `- **$Q:** \`node ${cli}\` (run \`${runId}\`, case \`${tc.id}\`)`,
+    `- **Evidence folder:** \`${evidence}/\``,
+    `- **Capture snippet:** \`${repoPath(join(base, '.capture.js'))}\``,
     ...(record
       ? [
-          `3. Recording is ON. Right before step 1 run \`browser_run_code_unsafe\` with \`filename: "${repoPath(join(base, '.rec', 'start.js'))}"\`; after the last step run it with \`filename: "${repoPath(join(base, '.rec', 'stop.js'))}"\`. The viewer server must be running (\`node ${cli} open\`). Stop prints the video file name; list it in \`evidence\` with kind \`video\`, and cite it in the \`evidence\` of every step that has no still of its own.`,
+          `- **Recording:** start \`${repoPath(join(base, '.rec', 'start.js'))}\`, stop \`${repoPath(join(base, '.rec', 'stop.js'))}\` (stop prints the video file name; cite it in every step without a still)`,
         ]
       : []),
-    `${record ? 4 : 3}. **Missing input** (a value the brief and memory above do not give): first \`node ${cli} memory recall "<what you need>" --run ${runId} --tc ${tc.id}\`. If nothing fits, ask the human: \`node ${cli} ask ${runId} ${tc.id} --field "<short name of the value, max 6 words>" --context "<where and why>" [--screenshot <file>]\`. A remembered answer is stored under the field, so name the value, not the situation. It waits up to 5 minutes and prints \`ANSWER <value>\`; on \`TIMEOUT\`, finish the case as \`blocked\` with \`blockedReason: "needs-input"\`. Never guess a value.`,
-    `${record ? 5 : 4}. **Memory feedback.** After using a memory: \`node ${cli} memory used <id>\` (add \`--failed\` if it did not work). Put anything a future run in this situation would need in \`learnings\`; a human approves it before it is reused.`,
-    `${record ? 6 : 5}. Write \`${repoPath(join(base, 'result.json'))}\` (contract: \`${repoPath(join(SKILL_DIR, 'schemas', 'test-result.schema.json'))}\`). Use this skeleton:`,
+    `- **Screenshots:** ${CONFIG.evidence?.blurPersonalData ? 'blur personal data (names, IDs, phones, addresses); this project requires it.' : 'do not blur; this is test data and reviewers need to read it.'}`,
+    `- **Result:** \`${repoPath(join(base, 'result.json'))}\` (contract \`${repoPath(join(SKILL_DIR, 'schemas', 'test-result.schema.json'))}\`, only if unsure). Skeleton:`,
     '',
     '```json',
-    JSON.stringify(
-      {
-        schemaVersion: 2,
-        testCaseId: tc.id,
-        status: 'pass | fail | blocked | skipped',
-        summary: 'one sentence a reviewer can trust',
-        environment: { versions: { app: '' }, variants: tc.variants || {} },
-        steps: tc.steps.map((s) => ({
-          n: s.n,
-          status: 'pass | fail | blocked | skipped | n/a',
-          actual: '',
-          evidence: [],
-        })),
-        evidence: [{ file: '01-<slug>.png', kind: 'screenshot', caption: '' }],
-        data: {},
-        defects: [],
-        ...(targets.reference && {
-          reference: { checked: false, result: 'same | deviation | improvement | n/a', notes: '' },
-        }),
-        learnings: [{ kind: 'data | procedure | env-quirk | gotcha', text: '', value: '', triggers: [] }],
-        notes: '',
-      },
-      null,
-      2,
-    ),
+    compactJson({
+      schemaVersion: 2,
+      testCaseId: tc.id,
+      status: 'pass | fail | blocked | skipped',
+      summary: '',
+      environment: { versions: { app: '' }, variants: tc.variants || {} },
+      steps: tc.steps.map((s) => ({ n: s.n, status: 'pass | fail | blocked | skipped | n/a', actual: '', evidence: [] })),
+      evidence: [{ file: '01-<slug>.png', kind: 'screenshot', caption: '' }],
+      data: {},
+      defects: [],
+      ...(targets.reference && {
+        reference: { checked: false, result: 'same | deviation | improvement | n/a', notes: '' },
+      }),
+      learnings: [],
+      notes: '',
+    }),
     '```',
-    '',
-    `${record ? 7 : 6}. Final reply to the orchestrator: ONE line — \`${tc.id} <STATUS> — <summary>\`. Everything else lives in result.json.`,
     '',
   ];
   return lines.join('\n');
@@ -437,6 +459,17 @@ function annotate() {
   }
 }
 
+// One key per line and each array item on its own line, values inline: the skeleton stays easy
+// to fill at about a third of the size of a fully indented one.
+function compactJson(value) {
+  const entries = Object.entries(value).map(([key, v]) =>
+    Array.isArray(v) && v.length
+      ? `  "${key}": [\n${v.map((item) => `    ${JSON.stringify(item)}`).join(',\n')}\n  ]`
+      : `  "${key}": ${JSON.stringify(v)}`,
+  );
+  return `{\n${entries.join(',\n')}\n}`;
+}
+
 function cell(text) {
   return String(text).replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
@@ -537,6 +570,51 @@ function mark() {
   if (state === 'running' && !existsSync(timing)) writeJson(timing, { startedAt: at });
   if (state === 'pending' && existsSync(timing)) rmSync(timing);
   console.log(`OK ${tcId} ${state}`);
+}
+
+// The orchestrator's whole execute loop: print every batch that can start now, with its agent,
+// model, effort and prompt, then launch exactly that. Before picking, it escalates finished
+// cheap-model batches whose cases need a second look. --release <batch> puts back a batch
+// whose agent died (its finished cases stay done); --fallback runs without the plugin's agents.
+function next() {
+  const runId = args[0];
+  if (!runId || !existsSync(runDir(runId))) fail('usage: next <runId> [--release <batch>] [--fallback]');
+  if (!readSchedule(runId)) fail(`run ${runId} has no schedule.json (made before 0.5.0); run init again.`);
+  try {
+    if (flags.release) {
+      const run = loadRun(runId);
+      const batch = readSchedule(runId).batches.find((b) => b.id === flags.release);
+      if (!batch) fail(`unknown batch ${flags.release}`);
+      const unfinished = batch.cases.filter((id) => !run.testCases.find((tc) => tc.id === id)?.result);
+      for (const id of unfinished) {
+        rmSync(join(tcDir(runId, id), 'progress.json'), { force: true });
+        rmSync(join(tcDir(runId, id), 'timing.json'), { force: true });
+      }
+      finishBatch(runId, batch.id, unfinished.length ? 'pending' : 'done', unfinished);
+      console.log(`RELEASED ${batch.id}: ${unfinished.length ? `${unfinished.join(', ')} will run again` : 'every case had finished'}`);
+    }
+    for (const b of escalate(loadRun(runId)))
+      console.log(
+        `ESCALATE ${b.cases.map((id) => `${id} (${b.escalatedFrom.reasons[id]})`).join(', ')} → ${b.model}/${b.effort} as batch ${b.id}; first attempt kept in tc/<id>/attempts/`,
+      );
+    for (;;) {
+      const step = nextLaunch(runId, { fallback: Boolean(flags.fallback) });
+      if (step.kind === 'done') return console.log(`DONE every batch finished. Next: $Q validate ${runId}`);
+      if (step.kind === 'wait')
+        return console.log(`WAIT ${step.running.map((b) => b.id).join(', ')} running${step.why ? ` (${step.why})` : ''}. Run next again when one notifies.`);
+      const { batch, prompt } = step;
+      const secret = batch.account?.secret;
+      console.log(
+        `LAUNCH ${batch.id}  subagent_type=${batch.agent}  model=${batch.model}  effort=${batch.effort}  run_in_background=true  cases=${batch.cases.join(',')}`,
+      );
+      if (secret?.startsWith('env:'))
+        console.log(`  replace {{PASSWORD ${secret}}} with that variable's value (${process.env[secret.slice(4)] ? 'set' : 'NOT set: ask the human'})`);
+      else if (prompt.includes('{{PASSWORD')) console.log('  replace {{PASSWORD …}} with the password the human gave you');
+      console.log(`<<<PROMPT\n${prompt}\nPROMPT>>>`);
+    }
+  } catch (error) {
+    fail(error.message);
+  }
 }
 
 function validate() {
@@ -644,8 +722,12 @@ function usage() {
   if (!runId || !existsSync(runDir(runId))) fail('usage needs a run id.');
   const run = loadRun(runId);
   if (flags.transcript || flags.tokens) {
-    const group = flags.group || null;
-    const cases = flags.cases
+    const batch = flags.batch ? readSchedule(runId)?.batches.find((b) => b.id === flags.batch) : null;
+    if (flags.batch && !batch) fail(`unknown batch ${flags.batch}`);
+    const group = batch?.id || flags.group || null;
+    const cases = batch
+      ? batch.cases
+      : flags.cases
       ? String(flags.cases).split(',')
       : group
         ? run.testCases.filter((tc) => (tc.group || tc.id) === group).map((tc) => tc.id)
@@ -657,23 +739,56 @@ function usage() {
         cases,
         transcript: flags.transcript ? resolve(String(flags.transcript)) : null,
         tokens: flags.tokens,
-        model: flags.model,
+        model: flags.model || batch?.model,
+        effort: flags.effort || batch?.effort,
+        tier: flags.tier || batch?.tier,
         toolUses: flags['tool-uses'] ? Number(flags['tool-uses']) : null,
         durationMs: flags.ms ? Number(flags.ms) : null,
       }))
         console.log(
-          `OK ${group || 'run'} ${e.model} ${(e.totalTokens ?? e.reportedTokens).toLocaleString('en-US')} tokens${e.totalTokens ? '' : ' (reported)'} ${usd(e.costUsd)}${e.estimated ? ` (estimated: ${e.rateSource || 'unknown price'})` : ''} [${e.source}]`,
+          `OK ${group || 'run'} ${e.model} ${(e.totalTokens ?? e.reportedTokens).toLocaleString('en-US')} tokens${e.totalTokens ? '' : ' (reported)'} ${usd(e.costUsd)}${e.estimated ? ` (estimated: ${e.rateSource || 'unknown price'})` : ''} [${e.source}]${e.profile ? `  ${profileLine(e.profile)}` : ''}`,
         );
+      if (batch) finishBatch(runId, batch.id, 'done');
     } catch (error) {
       fail(error.message);
     }
     return;
   }
   const cost = runCost(runId, run.testCases);
+  if (flags.profile) return printProfile(cost.profile);
   console.log(`${runId}  total ${usd(cost.totalUsd)}${cost.estimated ? ' (partly estimated)' : ''}  agents ${usd(cost.agentsUsd)}  chat ${usd(cost.chatUsd)} (${cost.chatTurns} turns)  list prices as of ${PRICING_AS_OF}`);
   for (const e of cost.entries)
     console.log(`  ${String(e.group || '-').padEnd(10)} ${e.model.padEnd(18)} ${String(e.totalTokens ?? `${e.reportedTokens} rep.`).padStart(14)} tokens  ${usd(e.costUsd)}${e.estimated ? ' est.' : ''}`);
   if (cost.missingGroups.length) console.log(`  ! no usage recorded for group(s): ${cost.missingGroups.join(', ')}`);
+}
+
+const kTokens = (n) => (n === null || n === undefined ? 'n/a' : `${Math.round(n / 1000)}K`);
+const profileLine = (p) =>
+  `turns=${p.turns} context first=${kTokens(p.firstContext)} peak=${kTokens(p.peakContext)} snapshots=${p.snapshots} imageReads=${p.imageReads}`;
+
+function printProfile(p) {
+  if (!p) return console.log('no profile: record groups with --transcript');
+  console.log(`${p.agents ? `agents=${p.agents} ` : ''}${profileLine(p)}`);
+  const tools = Object.entries(p.tools).sort((a, b) => b[1].resultChars - a[1].resultChars);
+  const total = tools.reduce((sum, [, t]) => sum + t.resultChars, 0) || 1;
+  for (const [name, t] of tools)
+    console.log(
+      `  ${name.padEnd(28)} ${String(t.calls).padStart(5)} calls ${String(Math.round(t.resultChars / 1000)).padStart(6)}K chars ${String(Math.round((t.resultChars / total) * 100)).padStart(3)}%${t.images ? `  ${t.images} image(s)` : ''}`,
+    );
+}
+
+// Where an agent's tokens went, straight from transcripts: no run needed, so it also measures
+// agents from before profiles were recorded, or a baseline to compare a change against.
+function profile() {
+  const files = args.map((f) => resolve(f)).filter((f) => existsSync(f));
+  if (!files.length) fail('usage: profile <transcript.jsonl> [more…]');
+  const parsed = files.map((f) => parseTranscript(f));
+  const cost = parsed.reduce(
+    (sum, t) => sum + Object.entries(t.byModel).reduce((s, [model, tokens]) => s + (costOf(model, tokens) || 0), 0),
+    0,
+  );
+  console.log(`${files.length} transcript(s)  ${usd(cost)} at list prices as of ${PRICING_AS_OF}`);
+  printProfile(mergeProfiles(parsed.map((t) => t.profile)));
 }
 
 function memoryHelp() {
@@ -797,7 +912,7 @@ function latest() {
 }
 
 // Dispatch last, so every function and constant above is initialized before a command runs.
-const commands = { init, open, serve, mark, validate, status, latest, annotate, ask, answer, questions, memory, usage };
+const commands = { init, open, serve, mark, next, validate, status, latest, annotate, ask, answer, questions, memory, usage, profile };
 if (!commands[command]) {
   console.log(
     readFileSync(new URL(import.meta.url), 'utf8')

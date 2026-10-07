@@ -27,15 +27,20 @@ Read each step's reference **when you reach that step**, not before.
    human's approval of the case list before running.
 2. **Init + viewer** → `$Q init <plan> [--label txt] [--record] [--only TC-1,TC-2]`, then
    `$Q open <runId>`. Open the viewer before launching agents: recording streams to it, and
-   agents ask the human through it. `init` adds relevant memories to each brief and lists any
-   `secret needed: env:NAME` you must pass in the agent prompt.
-3. **Execute** → `references/execute.md`. One Test Agent per group, **one group at a time**;
-   record each group's cost with `$Q usage` the moment it finishes.
+   agents ask the human through it. `init` adds relevant memories to each brief, schedules the
+   batches with their model and effort, and lists any `secret needed: env:NAME` you must pass
+   in the agent prompt.
+3. **Execute** → `references/execute.md`. Launch exactly what `$Q next <runId>` prints (agent,
+   model, effort, prompt; several at once when it lists several), record each batch with
+   `$Q usage --batch` the moment it finishes, and call `next` again until `DONE`.
    Never read agent transcripts, evidence or results here; use `$Q status <runId>`.
 4. **Validate** → `$Q validate <runId>`. Fix credential leaks yourself; send other warnings back
    to the agent or flag them to the reviewer. Never edit a result to look better.
 5. **Review + report** → `references/review.md`. The human approves, rejects or asks for a
    retest in the viewer; `$Q init <plan> --retest <runId>` reruns exactly those cases.
+
+This orchestration is bookkeeping: the scripts decide routing, so a session on Sonnet at
+medium effort runs it as well as a larger model. Spend effort on drafting the plan, not here.
 
 Only when needed: `references/memory.md` (what agents remember, live questions, secrets),
 `references/recording.md` (video), `references/annotate.md` (screenshot marks),

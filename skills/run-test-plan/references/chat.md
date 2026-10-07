@@ -13,7 +13,8 @@ needs them. It can:
 
 It cannot edit results, verdicts or code, drive the browser, or use MCP servers.
 
-`QA_CHAT_MODEL` sets the model (default `sonnet`), `QA_CLAUDE_BIN` the binary. The drawer shows
+`QA_CHAT_MODEL` sets the model (default `sonnet`), `QA_CHAT_EFFORT` its effort (default `low`),
+`QA_CLAUDE_BIN` the binary. The drawer shows
 the cost of each turn; "+" archives the conversation and starts a new one. Writes from the
 browser need the viewer's `x-qa-viewer` header and its own origin, so another web page cannot
 trigger the agent.

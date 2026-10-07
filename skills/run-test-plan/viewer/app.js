@@ -421,6 +421,13 @@ function duration(result) {
   return seconds > 0 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : '';
 }
 
+// Which model gave this verdict; an escalated case says the cheaper model's verdict was re-checked.
+function executedBy(by) {
+  if (!by) return '';
+  const model = `${by.model}${by.effort ? ` · ${by.effort}` : ''} (${by.tier})`;
+  return by.escalatedFrom ? `${model}, re-run after ${by.escalatedFrom}: ${by.reason || 'needed a second look'}` : model;
+}
+
 function renderDetail() {
   const tc = currentCase();
   if (!tc) {
@@ -441,6 +448,7 @@ function renderDetail() {
     ...Object.entries({ ...(tc.variants || {}), ...(env.variants || {}) }).map(([k, v]) => [variantLabel(k), v]),
     ...Object.entries(env.versions || {}).map(([k, v]) => [`${targetLabel(k)} version`, v]),
     ['Duration', duration(result)],
+    ['Agent', executedBy(tc.executedBy)],
     ['Evidence', tc.files.length ? `${tc.files.length} file${tc.files.length > 1 ? 's' : ''}` : ''],
   ].filter(([, v]) => v);
   const sections = [
